@@ -65,6 +65,10 @@ npx tsc --noEmit
 npm run build
 ```
 
+## 本番デプロイ
+
+Docker（`Dockerfile` + `compose.yaml`）で社内サーバーに載せる手順は **[docs/deploy.md](docs/deploy.md)**。
+
 ## 本番設定（`.env`）
 
 | キー | 内容 |

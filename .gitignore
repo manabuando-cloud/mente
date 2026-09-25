@@ -25,3 +25,6 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# 本番の秘密情報（サービスアカウントの鍵・移行用CSVなど）
+/secrets

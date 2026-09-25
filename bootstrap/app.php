@@ -20,6 +20,8 @@ return Application::configure(basePath: dirname(__DIR__))
             AddLinkHeadersForPreloadedAssets::class,
         ]);
         $middleware->alias(['admin' => EnsureAdmin::class]);
+        // リバースプロキシ（社内のnginx・ロードバランサ等）越しでも https のURLを正しく作る
+        $middleware->trustProxies(at: env('TRUSTED_PROXIES', '*'));
         $middleware->redirectGuestsTo(fn () => route('login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {

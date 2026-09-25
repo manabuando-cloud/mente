@@ -32,7 +32,7 @@ class VendorReportIngestor
     private const SKIP_PATTERN = '/チェックリスト|ﾁｪｯｸﾘｽﾄ|check\s*(list|sheet)|チェックシート|図面|点検表|納品書|請求書|写真|取説|取扱説明|カレンダー|案内|電力量|Thumbs\.db/iu';
 
     /** 既定で対象外にするフォルダ */
-    private const DEFAULT_SKIP = ['カレンダー'];
+    private const DEFAULT_SKIP = ['カレンダー', '東北事業所_トルンプ作業報告書'];
 
     // 半角カナの「ﾐﾂﾓﾘ」、部品価格・金額の書類も見積として扱う
     private const QUOTE_PATTERN = '/見積|ﾐﾂﾓﾘ|ミツモリ|価格|ｶｶｸ|金額|ｷﾝｶﾞｸ|est[_\-]?\d{6,}|SQJ\d+/iu';

@@ -25,3 +25,21 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run build
       - run: php artisan test
+
+  docker:
+    # 本番用イメージがビルドでき、起動してヘルスチェック（/up）が通ることを確認する
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t setsubi-trouble-navi:ci .
+      - name: Smoke test
+        run: |
+          docker run -d --name navi -p 8080:80 \
+            -e APP_KEY="base64:$(head -c32 /dev/urandom | base64)" \
+            -e APP_ENV=production -e APP_DEBUG=false -e APP_URL=http://localhost:8080 \
+            -e DB_CONNECTION=sqlite -e DB_DATABASE=/var/www/html/storage/app/ci.sqlite \
+            -e SESSION_DRIVER=file -e CACHE_STORE=file -e QUEUE_CONNECTION=sync -e LOG_CHANNEL=stderr \
+            --entrypoint sh setsubi-trouble-navi:ci -c "touch storage/app/ci.sqlite && chown www-data storage/app/ci.sqlite && exec navi-entrypoint"
+          for i in $(seq 1 30); do curl -fsS http://localhost:8080/up && break; sleep 2; done
+          curl -fsS -o /dev/null -w "%{http_code}\n" http://localhost:8080/login
+          docker logs navi | tail -20

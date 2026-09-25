@@ -140,7 +140,9 @@ class VendorIngestTest extends TestCase
         $this->fakeDrive()
             ->folder('vendor', 'v-auth', '作業報告書-見積書(オーセンテック)')
             ->file('v-auth', 'a1', '2023-06-14_作業報告書(AuDeBuMiniﾌﾞﾚｰｶ交換修理).pdf')
-            ->folder('vendor', 'v-tohoku', '東北事業所_トルンプ作業報告書')
+            ->folder('vendor', 'v-tohoku', '作業報告書-見積書(トルンプ)')
+            ->folder('vendor', 'v-old', '東北事業所_トルンプ作業報告書')
+            ->file('v-old', 'o1', 'Lam16189#A0121C0046.pdf')
             ->file('v-tohoku', 't1', 'Las18127#A0121C0046.pdf')
             ->file('v-tohoku', 't2', 'Lak18046#A0121C0046_ CheckList.pdf')
             ->file('v-tohoku', 't3', '20200619-#A0121D0046_Trumatic6000fiber(ｽｹｼﾞｭｰﾗPCｺｼｮｳ).pdf')
@@ -161,6 +163,8 @@ class VendorIngestTest extends TestCase
         $this->assertSame(['', '機械不明'], $plan['20181018-Trubendcell7036_TS作業報告書.pdf']); // 同じ型式が2台あるので特定しない
         $this->assertFalse($plan->has('2024年度カレンダー.pdf')); // カレンダーフォルダは既定で対象外
         $this->assertSame(VendorFolder::MODE_SKIP, VendorFolder::find('v-cal')->mode);
+        $this->assertSame(VendorFolder::MODE_SKIP, VendorFolder::find('v-old')->mode); // 東北の古い報告書は既定で対象外
+        $this->assertFalse($plan->has('Lam16189#A0121C0046.pdf'));
     }
 
     public function test_reports_matching_existing_legacy_cases_are_linked_without_ai(): void
