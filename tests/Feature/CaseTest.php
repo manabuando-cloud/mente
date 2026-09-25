@@ -71,6 +71,12 @@ class CaseTest extends TestCase
             ->assertInertia(fn ($p) => $p->component('Cases/Index')->where('cases.total', 1)->where('cases.data.0.symptom', 'レーザー出力が低下する'));
 
         $this->actingAs($this->user())->get('/cases?q=レーザー 異音')->assertInertia(fn ($p) => $p->where('cases.total', 0));
+
+        // _ や % も文字そのものとして検索できる
+        TroubleCase::factory()->create(['machine_id' => $m->id, 'symptom' => 'アラーム ALM_12 表示', 'codes' => null]);
+        TroubleCase::factory()->create(['machine_id' => $m->id, 'symptom' => 'アラーム ALMX12 表示', 'codes' => null]);
+        $this->actingAs($this->user())->get('/cases?q=ALM_12')->assertInertia(fn ($p) => $p->where('cases.total', 1));
+        $this->actingAs($this->user())->get('/cases?q=100%')->assertInertia(fn ($p) => $p->where('cases.total', 0));
     }
 
     public function test_update_and_remove_photo(): void
@@ -117,6 +123,16 @@ class CaseTest extends TestCase
         $this->assertSame(0, CaseRating::count());
     }
 
+    public function test_non_admin_editing_pending_case_is_not_sent_to_admin_page(): void
+    {
+        $case = TroubleCase::factory()->pending()->create();
+
+        $this->actingAs($this->user())->put("/cases/{$case->id}", ['machine_id' => $case->machine_id, 'symptom' => '修正'])
+            ->assertRedirect("/cases/{$case->id}");
+        $this->actingAs($this->user(admin: true))->put("/cases/{$case->id}", ['machine_id' => $case->machine_id, 'symptom' => '修正2'])
+            ->assertRedirect('/review');
+    }
+
     public function test_only_admin_can_delete(): void
     {
         $case = TroubleCase::factory()->create();
@@ -124,5 +140,28 @@ class CaseTest extends TestCase
         $this->actingAs($this->user())->delete("/cases/{$case->id}")->assertForbidden();
         $this->actingAs($this->user(admin: true))->delete("/cases/{$case->id}")->assertRedirect('/cases');
         $this->assertModelMissing($case);
+    }
+
+    public function test_csv_export_uses_search_filters(): void
+    {
+        $m = Machine::factory()->create(['model' => 'TruLaser3030', 'site' => '本社']);
+        TroubleCase::factory()->create(['machine_id' => $m->id, 'symptom' => 'レーザー出力低下, "再発"', 'cost' => 5000]);
+        TroubleCase::factory()->create(['machine_id' => $m->id, 'symptom' => '油圧の異音', 'note' => '=HYPERLINK("x")']);
+        TroubleCase::factory()->pending()->create(['machine_id' => $m->id, 'symptom' => 'レーザー（確認待ち）']);
+
+        $response = $this->actingAs($this->user())->get('/cases/export?q=レーザー');
+        $response->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+
+        $csv = $response->streamedContent();
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $csv);
+        $rows = array_map(fn ($l) => str_getcsv($l, escape: ''), array_filter(explode("\n", substr($csv, 3))));
+        $this->assertCount(2, $rows); // ヘッダー + 1件
+        $this->assertSame('症状', $rows[0][6]);
+        $this->assertSame('レーザー出力低下, "再発"', $rows[1][6]);
+        $this->assertSame('TruLaser3030', $rows[1][2]);
+        $this->assertSame('5000', $rows[1][11]);
+
+        $all = $this->actingAs($this->user())->get('/cases/export?q=油圧')->streamedContent();
+        $this->assertStringContainsString("'=HYPERLINK", $all);
     }
 }

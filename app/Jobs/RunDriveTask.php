@@ -17,6 +17,7 @@ class RunDriveTask implements ShouldBeUnique, ShouldQueue
         'ingest' => 'navi:ingest-reports',
         'link-reports' => 'navi:link-reports',
         'link-quotes' => 'navi:link-quotes',
+        'suggest-quotes' => 'navi:suggest-quotes',
     ];
 
     public int $timeout = 1800;
@@ -31,7 +32,9 @@ class RunDriveTask implements ShouldBeUnique, ShouldQueue
     public function handle(): void
     {
         Cache::put("navi.task.{$this->task}", ['status' => 'running', 'at' => now()->toIso8601String()]);
-        Artisan::call(self::COMMANDS[$this->task]);
+        // 見積候補づくりは Gemini が使えるなら PDF の中身も読む
+        $params = $this->task === 'suggest-quotes' && filled(config('navi.gemini.api_key')) ? ['--ai' => true] : [];
+        Artisan::call(self::COMMANDS[$this->task], $params);
         Cache::forever("navi.task.{$this->task}", [
             'status' => 'done',
             'at' => now()->toIso8601String(),

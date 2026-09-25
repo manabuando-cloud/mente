@@ -22,6 +22,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/', DashboardController::class)->name('dashboard');
 
+    Route::get('/cases/export', [CaseController::class, 'export'])->name('cases.export');
     Route::resource('cases', CaseController::class)->except('destroy');
     Route::post('/cases/{case}/rating', CaseRatingController::class)->name('cases.rate');
 
@@ -41,5 +42,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/drive', [DriveSyncController::class, 'index'])->name('drive.index');
         Route::post('/drive/run', [DriveSyncController::class, 'run'])->name('drive.run');
         Route::post('/drive/resolve', [DriveSyncController::class, 'resolve'])->name('drive.resolve');
+        Route::post('/drive/quote-assign', [DriveSyncController::class, 'assignQuote'])->name('drive.quote-assign');
     });
 });

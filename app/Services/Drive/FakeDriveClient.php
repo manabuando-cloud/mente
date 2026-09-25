@@ -18,12 +18,13 @@ class FakeDriveClient implements DriveClient
         return $this;
     }
 
-    public function file(string $parentId, string $id, string $name, string $content = '%PDF-fake', string $mime = 'application/pdf'): static
+    public function file(string $parentId, string $id, string $name, string $content = '%PDF-fake', string $mime = 'application/pdf', ?string $createdTime = null): static
     {
-        $this->children[$parentId][] = [
+        $this->children[$parentId][] = array_filter([
             'id' => $id, 'name' => $name, 'mimeType' => $mime,
+            'createdTime' => $createdTime, 'modifiedTime' => $createdTime,
             'webViewLink' => "https://drive.google.com/file/d/{$id}/view",
-        ];
+        ]);
         $this->contents[$id] = $content;
 
         return $this;

@@ -24,7 +24,7 @@ class GoogleDriveClient implements DriveClient
         do {
             $response = Http::withToken($this->token())->timeout(60)->get(self::API.'/files', array_filter([
                 'q' => "'{$folderId}' in parents and trashed = false",
-                'fields' => 'nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink)',
+                'fields' => 'nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, webViewLink)',
                 'pageSize' => 1000,
                 'pageToken' => $pageToken,
                 'supportsAllDrives' => 'true',

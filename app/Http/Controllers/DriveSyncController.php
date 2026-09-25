@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\RunDriveTask;
 use App\Models\ProcessedReportFile;
 use App\Models\TroubleCase;
+use App\Services\QuoteSuggester;
 use App\Services\ReportLinker;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,7 @@ class DriveSyncController extends Controller
             ])->values(),
             'reports' => Cache::get(ReportLinker::CACHE_REPORTS),
             'quotes' => Cache::get(ReportLinker::CACHE_QUOTES),
+            'quoteSuggestions' => Cache::get(QuoteSuggester::CACHE_RESULT),
             'stats' => [
                 'without_report' => $withoutReport,
                 'without_quote_no' => TroubleCase::published()->where(fn ($q) => $q->whereNull('quote_no')->orWhere('quote_no', ''))->count(),
@@ -66,5 +68,25 @@ class DriveSyncController extends Controller
         }
 
         return back()->with('success', 'リンクしました');
+    }
+
+    /** 見積PDFの紐づけ先候補を確定する／「該当なし」にする */
+    public function assignQuote(Request $request, QuoteSuggester $suggester): RedirectResponse
+    {
+        $data = $request->validate([
+            'file_id' => ['required', 'string'],
+            'case_id' => ['nullable', 'required_unless:dismiss,true', 'string', 'exists:trouble_cases,id'],
+            'dismiss' => ['nullable', 'boolean'],
+        ]);
+
+        if ($request->boolean('dismiss')) {
+            $suggester->dismiss($data['file_id']);
+
+            return back()->with('success', '該当なしにしました（次回以降この見積は候補に出ません）');
+        }
+
+        return $suggester->assign($data['file_id'], TroubleCase::findOrFail($data['case_id']))
+            ? back()->with('success', '見積書番号と見積書PDFを対応履歴に登録しました')
+            : back()->with('error', '候補が見つかりません。候補づくりをもう一度実行してください');
     }
 }

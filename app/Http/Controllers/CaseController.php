@@ -9,12 +9,14 @@ use App\Models\Machine;
 use App\Models\TroubleCase;
 use App\Services\SimilarCaseFinder;
 use App\Services\SlackNotifier;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CaseController extends Controller
 {
@@ -23,16 +25,8 @@ class CaseController extends Controller
     {
         $filters = $request->only(['q', 'machine', 'site', 'from', 'to', 'sort']);
 
-        $cases = TroubleCase::published()
+        $cases = $this->searchQuery($filters)
             ->with(['machine', 'photos', 'ratings'])
-            ->keyword($filters['q'] ?? null)
-            ->when($filters['machine'] ?? null, fn ($q, $v) => $q->where('machine_id', $v))
-            ->when($filters['site'] ?? null, fn ($q, $v) => $q->whereHas('machine', fn ($m) => $m->where('site', $v)))
-            ->when($filters['from'] ?? null, fn ($q, $v) => $q->whereDate('date', '>=', $v))
-            ->when($filters['to'] ?? null, fn ($q, $v) => $q->whereDate('date', '<=', $v))
-            ->when(($filters['sort'] ?? '') === 'rating',
-                fn ($q) => $q->withSum('ratings as score', 'value')->orderByDesc('score'),
-                fn ($q) => $q->orderByDesc('date')->orderByDesc('created_at'))
             ->paginate(20)
             ->withQueryString();
 
@@ -49,6 +43,48 @@ class CaseController extends Controller
             'machines' => CasePresenter::machineOptions(),
             'sites' => Machine::whereNotNull('site')->distinct()->orderBy('site')->pluck('site'),
         ]);
+    }
+
+    /** 検索結果をCSVで出力（Excelで開けるようUTF-8 BOM付き） */
+    public function export(Request $request): StreamedResponse
+    {
+        $query = $this->searchQuery($request->only(['q', 'machine', 'site', 'from', 'to', 'sort']))->with('machine');
+        $columns = [
+            'ID' => 'id', '対応日' => fn ($c) => $c->date?->format('Y-m-d'), '機種' => fn ($c) => $c->machine?->model,
+            '機械番号' => 'machine_id', '拠点' => fn ($c) => $c->machine?->site, '担当者' => 'engineer', '症状' => 'symptom',
+            '原因' => 'cause', '対処' => 'action', 'エラーコード' => 'codes', '交換部品' => 'parts', '費用' => 'cost',
+            '停止日数' => 'days', '状況' => 'status', '報告書番号' => 'report_no', '見積書番号' => 'quote_no',
+            '報告書PDF' => 'report_url', '見積書PDF' => 'quote_url', '備考' => 'note', '登録者' => 'submitted_by',
+        ];
+
+        return response()->streamDownload(function () use ($query, $columns) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, array_keys($columns), escape: '');
+            foreach ($query->lazy(500) as $c) {
+                fputcsv($out, array_map(fn ($col) => self::csvCell(is_string($col) ? $c->{$col} : $col($c)), array_values($columns)), escape: '');
+            }
+            fclose($out);
+        }, '対応履歴_'.now()->format('Ymd_His').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /** Excelで数式として解釈される先頭文字を無害化する（CSVインジェクション対策） */
+    private static function csvCell(mixed $v): mixed
+    {
+        return is_string($v) && preg_match('/^[=+@\t\r]/', $v) ? "'".$v : $v;
+    }
+
+    private function searchQuery(array $filters): Builder
+    {
+        return TroubleCase::published()
+            ->keyword($filters['q'] ?? null)
+            ->when($filters['machine'] ?? null, fn ($q, $v) => $q->where('machine_id', $v))
+            ->when($filters['site'] ?? null, fn ($q, $v) => $q->whereHas('machine', fn ($m) => $m->where('site', $v)))
+            ->when($filters['from'] ?? null, fn ($q, $v) => $q->whereDate('date', '>=', $v))
+            ->when($filters['to'] ?? null, fn ($q, $v) => $q->whereDate('date', '<=', $v))
+            ->when(($filters['sort'] ?? '') === 'rating',
+                fn ($q) => $q->withSum('ratings as score', 'value')->orderByDesc('score')->orderBy('id'),
+                fn ($q) => $q->orderByDesc('date')->orderByDesc('created_at')->orderBy('id'));
     }
 
     public function create(Request $request): Response
@@ -116,7 +152,9 @@ class CaseController extends Controller
             $case->photos()->whereIn('id', $request->input('remove_photo_ids', []))->get()->each(fn ($p) => $this->deletePhoto($p));
         });
 
-        return redirect()->route($case->review_status === TroubleCase::REVIEW_PUBLISHED ? 'cases.show' : 'review.index', $case)
+        $backToReview = $case->review_status === TroubleCase::REVIEW_PENDING && $request->user()->isAdmin();
+
+        return ($backToReview ? redirect()->route('review.index') : redirect()->route('cases.show', $case))
             ->with('success', '更新しました');
     }
 

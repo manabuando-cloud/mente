@@ -75,10 +75,11 @@ class TroubleCase extends Model
     {
         $terms = preg_split('/[\s　]+/u', trim((string) $keyword), -1, PREG_SPLIT_NO_EMPTY);
         foreach ($terms as $term) {
-            $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term).'%';
+            $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term).'%';
             $query->where(function (Builder $q) use ($like) {
                 foreach (['symptom', 'cause', 'action', 'codes', 'parts', 'note', 'machine_id', 'engineer', 'report_no', 'quote_no'] as $col) {
-                    $q->orWhere($col, 'like', $like);
+                    // エスケープ文字はDBごとに既定が違う（SQLiteは無し、MySQLは\）ので、どこでも同じ意味の ! を明示する
+                    $q->orWhereRaw("{$col} LIKE ? ESCAPE '!'", [$like]);
                 }
             });
         }
