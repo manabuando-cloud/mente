@@ -40,7 +40,7 @@ class DriveSyncController extends Controller
                 'error_files' => ProcessedReportFile::where('result', 'like', 'error%')->count(),
             ],
             'configured' => [
-                'drive' => filled(config('navi.drive.credentials')),
+                'drive' => filled(config('navi.drive.credentials')) || config('navi.drive.use_adc'),
                 'gemini' => filled(config('navi.gemini.api_key')),
                 'slack' => filled(config('navi.slack.webhook_url')),
             ],
@@ -53,7 +53,10 @@ class DriveSyncController extends Controller
         Cache::put("navi.task.{$task}", ['status' => 'queued', 'at' => now()->toIso8601String()]);
         RunDriveTask::dispatch($task);
 
-        return back()->with('success', '実行を受け付けました。完了までしばらくお待ちください（キューワーカーが必要です）。');
+        // Cloud Run ではキューワーカーを置かず QUEUE_CONNECTION=sync で、この場で実行する
+        return back()->with('success', config('queue.default') === 'sync'
+            ? '実行しました。結果は各項目に表示されています。'
+            : '実行を受け付けました。完了までしばらくお待ちください（キューワーカーが必要です）。');
     }
 
     /** 曖昧だった紐づけを候補から選んで確定する */

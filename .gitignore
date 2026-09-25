@@ -28,3 +28,6 @@ Thumbs.db
 
 # 本番の秘密情報（サービスアカウントの鍵・移行用CSVなど）
 /secrets
+
+# Cloud Run デプロイ設定（プロジェクトIDなど）
+/deploy/cloudrun/config.env

@@ -12,7 +12,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(GeminiClient::class, fn () => GeminiClient::fromConfig());
-        $this->app->singleton(DriveClient::class, fn () => new GoogleDriveClient(config('navi.drive.credentials')));
+        $this->app->singleton(DriveClient::class, fn () => new GoogleDriveClient(config('navi.drive.credentials'), config('navi.drive.use_adc')));
     }
 
     public function boot(): void

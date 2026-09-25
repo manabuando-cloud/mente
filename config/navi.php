@@ -3,6 +3,17 @@
 return [
 
     /*
+    | ログイン方式
+    |   google: Google Workspace アカウントでログイン（下の allowed_domain で制限）
+    |   open  : URLを知っている人なら誰でも使える。最初に名前だけ入力してもらい、
+    |           管理機能（取込レビュー・Drive連携・削除など）は admin_passcode を知っている人だけ
+    */
+    'auth_mode' => env('NAVI_AUTH_MODE', 'google'),
+
+    // open モードで管理者になるための合言葉。空なら open モードでは誰も管理者になれない
+    'admin_passcode' => env('NAVI_ADMIN_PASSCODE'),
+
+    /*
     | Google Workspace ドメイン制限（旧GAS: 「組織内の全員」デプロイ相当）。
     | 空にするとドメイン制限なし。
     */
@@ -38,6 +49,8 @@ return [
         'quote_subfolder_name' => '見積',
         // サービスアカウントのJSONキー。Driveフォルダを当該アカウントに共有しておくこと。
         'credentials' => env('GOOGLE_APPLICATION_CREDENTIALS'),
+        // Cloud Run などでは鍵ファイルを使わず、実行中のサービスアカウントの認証情報（ADC）を使う
+        'use_adc' => (bool) env('NAVI_DRIVE_USE_ADC', false),
     ],
 
     // 拠点名の表記ゆれ（旧データ・設備マスタの「事業所」列）

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\GoogleLoginController;
+use App\Http\Controllers\Auth\OpenLoginController;
 use App\Http\Controllers\CaseController;
 use App\Http\Controllers\CaseRatingController;
 use App\Http\Controllers\ConsultationController;
@@ -15,6 +16,7 @@ Route::middleware('guest')->group(function () {
     Route::get('/auth/google', [GoogleLoginController::class, 'redirect'])->name('auth.google');
     Route::get('/auth/google/callback', [GoogleLoginController::class, 'callback']);
     Route::post('/auth/dev', [GoogleLoginController::class, 'devLogin'])->name('auth.dev');
+    Route::post('/auth/open', [OpenLoginController::class, 'store'])->middleware('throttle:10,1')->name('auth.open');
 });
 
 Route::middleware('auth')->group(function () {

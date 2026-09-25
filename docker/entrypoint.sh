@@ -2,9 +2,16 @@
 set -e
 cd /var/www/html
 
+# Cloud Run などは待ち受けポートを PORT で渡してくる（既定は 80）
+if [ -n "${PORT:-}" ] && [ "$PORT" != "80" ]; then
+  sed -i "s/^Listen 80$/Listen ${PORT}/" /etc/apache2/ports.conf
+  sed -i "s/<VirtualHost \*:80>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-available/000-default.conf
+fi
+
 # 永続ボリュームに載る storage 配下のディレクトリを用意
 mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs
-chown -R www-data:www-data storage bootstrap/cache
+# Cloud Storage をマウントしたディレクトリは chown できないことがあるので失敗しても続ける
+chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
 
 # 設定・ルート・画面のキャッシュ（.env の値を反映するので起動時に作る）
 su -s /bin/sh www-data -c "php artisan config:cache && php artisan route:cache && php artisan view:cache && php artisan event:cache" 
@@ -20,7 +27,13 @@ fi
 case "${CONTAINER_ROLE:-web}" in
   web)
     if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
-      su -s /bin/sh www-data -c "php artisan migrate --force"
+      # 複数インスタンスが同時に起動しても1回だけ実行されるよう --isolated（DBのロックを使う）。
+      # ただしDBが空の初回はロック用テーブル（cache_locks）がまだ無いので、普通に実行して作る
+      if su -s /bin/sh www-data -c "php artisan migrate:status" > /dev/null 2>&1; then
+        su -s /bin/sh www-data -c "php artisan migrate --force --isolated"
+      else
+        su -s /bin/sh www-data -c "php artisan migrate --force"
+      fi
     fi
     [ -L public/storage ] || php artisan storage:link
     exec apache2-foreground

@@ -2,6 +2,7 @@
 
 namespace App\Services\Drive;
 
+use Google\Auth\ApplicationDefaultCredentials;
 use Google\Auth\Credentials\ServiceAccountCredentials;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -15,7 +16,9 @@ class GoogleDriveClient implements DriveClient
 {
     private const API = 'https://www.googleapis.com/drive/v3';
 
-    public function __construct(private ?string $credentialsPath) {}
+    private const SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+
+    public function __construct(private ?string $credentialsPath, private bool $useAdc = false) {}
 
     public function listChildren(string $folderId): array
     {
@@ -48,13 +51,14 @@ class GoogleDriveClient implements DriveClient
     private function token(): string
     {
         return Cache::remember('navi.drive.token', now()->addMinutes(50), function () {
-            if (! $this->credentialsPath || ! is_file($this->credentialsPath)) {
-                throw new RuntimeException('GOOGLE_APPLICATION_CREDENTIALS（サービスアカウントのJSONキー）が見つかりません');
+            if ($this->credentialsPath && is_file($this->credentialsPath)) {
+                $creds = new ServiceAccountCredentials(self::SCOPE, json_decode(file_get_contents($this->credentialsPath), true));
+            } elseif ($this->useAdc) {
+                // Cloud Run のメタデータサーバーから、サービスに割り当てたサービスアカウントのトークンを得る
+                $creds = ApplicationDefaultCredentials::getCredentials(self::SCOPE);
+            } else {
+                throw new RuntimeException('Driveの認証情報がありません（GOOGLE_APPLICATION_CREDENTIALS か NAVI_DRIVE_USE_ADC=true を設定してください）');
             }
-            $creds = new ServiceAccountCredentials(
-                'https://www.googleapis.com/auth/drive.readonly',
-                json_decode(file_get_contents($this->credentialsPath), true),
-            );
             $token = $creds->fetchAuthToken();
 
             return $token['access_token'] ?? throw new RuntimeException('Driveのアクセストークンを取得できませんでした');

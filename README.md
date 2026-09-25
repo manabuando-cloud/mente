@@ -67,7 +67,10 @@ npm run build
 
 ## 本番デプロイ
 
-Docker（`Dockerfile` + `compose.yaml`）で社内サーバーに載せる手順は **[docs/deploy.md](docs/deploy.md)**。
+- **Google Cloud（Cloud Run）**: **[docs/deploy-cloudrun.md](docs/deploy-cloudrun.md)**（`deploy/cloudrun/deploy.sh`）。現在の本番の想定
+- 社内サーバー（Docker / `compose.yaml`）: [docs/deploy.md](docs/deploy.md)
+
+ログイン方式は `NAVI_AUTH_MODE` で切り替える。`open` は「URLを知っている人なら誰でも使える」（名前だけ入力、管理機能は `NAVI_ADMIN_PASSCODE`）、`google` は Google Workspace ログイン。
 
 ## 本番設定（`.env`）
 

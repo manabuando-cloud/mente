@@ -146,4 +146,17 @@ class DriveIntegrationTest extends TestCase
         $this->assertSame('salvagnini L3-30', Machine::find('L_0987')->model);
         $this->assertSame('TruLaser1030', Machine::find('NEW0001')->model);
     }
+
+    public function test_daily_runs_every_step_and_continues_after_failure(): void
+    {
+        $this->fakeDrive()->folder('site-honsha', 'mf', 'M1_Model');
+        config(['navi.drive.vendor_folder_id' => null]);
+
+        $this->artisan('navi:daily')
+            ->expectsOutputToContain('機種マスタの補完')
+            ->expectsOutputToContain('業者別フォルダの取込み')
+            ->expectsOutputToContain('報告書PDFの自動リンク')
+            ->assertSuccessful();
+        $this->assertNotNull(Machine::find('M1'));
+    }
 }

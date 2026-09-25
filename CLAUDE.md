@@ -10,6 +10,10 @@ Laravel 13 + Inertia 3 + React 19 (TypeScript) + Tailwind 4。旧GAS版の仕様
 - Drive連携の結果（曖昧リスト・見積候補）は Cache に保存し、`/drive` 画面で人が確定する（`ReportLinker`, `QuoteSuggester`）
 - 機種の表示順は「機種名（型式） + 機械番号」で統一（ユーザー要望）
 
+## 本番
+- Cloud Run（`deploy/cloudrun/deploy.sh`、手順は `docs/deploy-cloudrun.md`）。キューワーカーは置かず `QUEUE_CONNECTION=sync`、毎日の処理は `navi:daily` を Cloud Scheduler → Cloud Run ジョブで起動
+- 最初は `NAVI_AUTH_MODE=open`（名前だけ入力。管理機能は `NAVI_ADMIN_PASSCODE`）。`User::isAdmin()` で判定
+
 ## 注意
 - 旧スプレッドシート由来の値は必ず `App\Support\LegacyValue` で正規化する（日付・全角数字の自動変換問題）
 - 外部 HTTP はテストで `Http::preventStrayRequests()` 済み。Gemini/Slack は `Http::fake`、Drive は `$this->fakeDrive()`

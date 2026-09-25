@@ -92,6 +92,11 @@ class VendorReportIngestor
         $limit ??= config('navi.ingest_batch_limit');
         $result = ['created' => 0, 'linked_existing' => 0, 'quotes_linked' => 0, 'quotes_waiting' => 0, 'skipped' => 0, 'errors' => 0, 'quota_exhausted' => false, 'unresolved' => [], 'messages' => [], 'plan' => []];
 
+        if (! config('navi.drive.vendor_folder_id')) {
+            $result['messages'][] = 'NAVI_DRIVE_VENDOR_FOLDER が未設定のため業者別フォルダの取込みは行いません';
+
+            return $result;
+        }
         $folders = $this->syncFolders();
         $known = KnownDriveFiles::ids();
         $matcher = $this->machineMatcher();
