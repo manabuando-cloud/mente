@@ -9,3 +9,6 @@
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore
+
+# Windows 用スクリプトは CRLF のまま（PowerShell 5.1 / メモ帳向け）
+*.ps1 text eol=crlf

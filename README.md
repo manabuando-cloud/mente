@@ -67,7 +67,8 @@ npm run build
 
 ## 本番デプロイ
 
-- **Windows PC（kltech04）・費用ゼロ**: **[docs/deploy-windows.md](docs/deploy-windows.md)**（`deploy/windows/navi.sh`）。現在の本番の想定。WSL2 + Docker Engine + SQLite、会社の Google アカウントでログイン、公開URLは ngrok（無料の固定ドメイン）
+- **Windows PC（kltech04）に直接インストール・費用ゼロ**: **[docs/deploy-windows-native.md](docs/deploy-windows-native.md)**（`deploy/windows-native/`）。現在の本番の想定。PHP（Windows版）+ Caddy を Windows サービスで動かし、DB は SQLite、会社の Google アカウントでログイン、公開URLは ngrok。配布物は GitHub Actions（`Windows 配布物`）が作る
+- Windows PC + WSL2（仮想化が使えるPC向け）: [docs/deploy-windows.md](docs/deploy-windows.md)（`deploy/windows/navi.sh`）
 - Google Cloud（Cloud Run・要課金）: [docs/deploy-cloudrun.md](docs/deploy-cloudrun.md)（`deploy/cloudrun/deploy.sh`）
 - Linux サーバー（Docker + MySQL / `compose.yaml`）: [docs/deploy.md](docs/deploy.md)
 
