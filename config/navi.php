@@ -66,6 +66,8 @@ return [
         'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
         'endpoint' => env('GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta'),
         'timeout' => (int) env('GEMINI_TIMEOUT', 120),
+        // 無料枠は1分あたりの回数制限が厳しいので、連続で呼ぶときの最低間隔（ミリ秒）。無料枠なら 7000 程度
+        'min_interval_ms' => (int) env('GEMINI_MIN_INTERVAL_MS', 0),
     ],
 
     'slack' => [
@@ -74,6 +76,12 @@ return [
 
     // 写真の保存先ディスク（config/filesystems.php）
     'photos_disk' => env('NAVI_PHOTOS_DISK', 'public'),
+
+    // 毎日のバックアップ（navi:backup）の保存先と保存日数
+    'backup' => [
+        'path' => env('NAVI_BACKUP_PATH', storage_path('backups')),
+        'keep_days' => (int) env('NAVI_BACKUP_KEEP_DAYS', 30),
+    ],
 
     // 1回の自動取込みで処理するPDFの上限（Geminiのクォータ対策）
     'ingest_batch_limit' => (int) env('NAVI_INGEST_BATCH_LIMIT', 15),

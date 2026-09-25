@@ -13,6 +13,13 @@ mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessi
 # Cloud Storage をマウントしたディレクトリは chown できないことがあるので失敗しても続ける
 chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
 
+# SQLite で運用する場合（Windows PC 1台構成など）はDBファイルが無ければ作る
+if [ "${DB_CONNECTION:-}" = "sqlite" ] && [ -n "${DB_DATABASE:-}" ] && [ ! -f "$DB_DATABASE" ]; then
+  mkdir -p "$(dirname "$DB_DATABASE")"
+  touch "$DB_DATABASE"
+  chown www-data:www-data "$(dirname "$DB_DATABASE")" "$DB_DATABASE"
+fi
+
 # 設定・ルート・画面のキャッシュ（.env の値を反映するので起動時に作る）
 su -s /bin/sh www-data -c "php artisan config:cache && php artisan route:cache && php artisan view:cache && php artisan event:cache" 
 

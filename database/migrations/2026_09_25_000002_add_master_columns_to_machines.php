@@ -19,6 +19,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('machines', function (Blueprint $table) {
+            $table->dropIndex(['equipment_no']); // SQLite はインデックスを先に消さないと列を削除できない
             $table->dropColumn(['equipment_no', 'spec', 'installed_on']);
         });
     }

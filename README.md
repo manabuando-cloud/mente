@@ -67,8 +67,9 @@ npm run build
 
 ## 本番デプロイ
 
-- **Google Cloud（Cloud Run）**: **[docs/deploy-cloudrun.md](docs/deploy-cloudrun.md)**（`deploy/cloudrun/deploy.sh`）。現在の本番の想定
-- 社内サーバー（Docker / `compose.yaml`）: [docs/deploy.md](docs/deploy.md)
+- **Windows PC（kltech04）・費用ゼロ**: **[docs/deploy-windows.md](docs/deploy-windows.md)**（`deploy/windows/navi.sh`）。現在の本番の想定。WSL2 + Docker Engine + SQLite、社外公開は Cloudflare Tunnel
+- Google Cloud（Cloud Run・要課金）: [docs/deploy-cloudrun.md](docs/deploy-cloudrun.md)（`deploy/cloudrun/deploy.sh`）
+- Linux サーバー（Docker + MySQL / `compose.yaml`）: [docs/deploy.md](docs/deploy.md)
 
 ログイン方式は `NAVI_AUTH_MODE` で切り替える。`open` は「URLを知っている人なら誰でも使える」（名前だけ入力、管理機能は `NAVI_ADMIN_PASSCODE`）、`google` は Google Workspace ログイン。
 

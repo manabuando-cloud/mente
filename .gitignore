@@ -31,3 +31,6 @@ Thumbs.db
 
 # Cloud Run デプロイ設定（プロジェクトIDなど）
 /deploy/cloudrun/config.env
+
+# Windows PC 構成の秘密情報（サービスアカウントの鍵）
+/deploy/windows/secrets/

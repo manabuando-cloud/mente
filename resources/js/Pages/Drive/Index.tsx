@@ -5,7 +5,8 @@ import type { Machine } from '@/types';
 import AppLayout from '@/Layouts/AppLayout';
 import { dateTime, yen } from '@/lib/format';
 
-type TaskState = { status: 'queued' | 'running' | 'done'; at: string; output?: string } | null;
+type TaskState = { status: 'queued' | 'running' | 'done' | 'failed'; at: string; output?: string } | null;
+const isBusy = (s: TaskState) => !!s && (s.status === 'queued' || s.status === 'running');
 type Ambiguous = { case_id: string; machine_id: string; date: string | null; symptom: string; candidates: { name: string; url: string }[] };
 type LinkResult = { linked: number; ambiguous: Ambiguous[]; no_folder?: number; not_found?: number; ran_at: string } | null;
 
@@ -72,7 +73,7 @@ export default function DriveIndex({
     stats: { without_report: number; without_quote_no: number; processed_files: number; error_files: number };
     configured: { drive: boolean; gemini: boolean; slack: boolean };
 }) {
-    const busy = tasks.some((t) => t.state && t.state.status !== 'done');
+    const busy = tasks.some((t) => isBusy(t.state));
     usePoll(5000, {}, { autoStart: busy });
 
     return (
@@ -91,8 +92,8 @@ export default function DriveIndex({
                         <code className="mt-2 text-[11px] text-muted">php artisan {t.command}</code>
                         {t.state && (
                             <div className="mt-2 text-xs">
-                                <span className={t.state.status === 'done' ? 'text-good' : 'text-warn'}>
-                                    {t.state.status === 'done' ? '✓ 完了' : t.state.status === 'running' ? '⏳ 実行中' : '⏳ 待機中'}
+                                <span className={t.state.status === 'done' ? 'text-good' : t.state.status === 'failed' ? 'text-bad' : 'text-warn'}>
+                                    {{ done: '✓ 完了', failed: '⚠ 失敗', running: '⏳ 実行中', queued: '⏳ 待機中' }[t.state.status]}
                                 </span>{' '}
                                 <span className="text-muted">{dateTime(t.state.at)}</span>
                                 {t.state.output && <pre className="mt-1 rounded bg-surface-2 p-2 text-[11px] whitespace-pre-wrap text-ink-2">{t.state.output}</pre>}
@@ -100,7 +101,7 @@ export default function DriveIndex({
                         )}
                         <button
                             className="btn mt-3"
-                            disabled={!!t.state && t.state.status !== 'done'}
+                            disabled={isBusy(t.state)}
                             onClick={() => router.post('/drive/run', { task: t.key }, { preserveScroll: true })}
                         >
                             今すぐ実行

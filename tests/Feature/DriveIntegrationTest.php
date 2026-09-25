@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\RunDriveTask;
 use App\Models\Machine;
 use App\Models\ProcessedReportFile;
 use App\Models\TroubleCase;
+use App\Services\Drive\DriveClient;
+use App\Services\Drive\GoogleDriveClient;
 use App\Services\ReportLinker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -158,5 +161,22 @@ class DriveIntegrationTest extends TestCase
             ->expectsOutputToContain('報告書PDFの自動リンク')
             ->assertSuccessful();
         $this->assertNotNull(Machine::find('M1'));
+    }
+
+    public function test_failed_task_is_recorded_so_the_screen_does_not_stay_running(): void
+    {
+        $this->app->instance(DriveClient::class, new GoogleDriveClient(null, false));
+        TroubleCase::factory()->create(['report_url' => null]);
+
+        try {
+            (new RunDriveTask('link-reports'))->handle();
+            $this->fail('例外が投げ直されていない');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('Driveの認証情報がありません', $e->getMessage());
+        }
+
+        $state = Cache::get('navi.task.link-reports');
+        $this->assertSame('failed', $state['status']);
+        $this->assertStringContainsString('Driveの認証情報がありません', $state['output']);
     }
 }
