@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import CaseCard from '@/Components/CaseCard';
 import type { Case, SharedProps } from '@/types';
 import { dateTime, yen } from '@/lib/format';
+import { statusLabel } from '@/lib/status';
 
 export default function CaseShow({ case: c, similar }: { case: Case; similar: Case[] }) {
     const { auth } = usePage<SharedProps>().props;
@@ -32,6 +33,29 @@ export default function CaseShow({ case: c, similar }: { case: Case; similar: Ca
             <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
                 <div className="space-y-5">
                     <CaseCard c={c} />
+                    {c.parts.length > 0 && (
+                        <section className="card overflow-x-auto p-4">
+                            <h2 className="mb-2 text-xs font-semibold text-muted">交換部品</h2>
+                            <table className="w-full text-sm">
+                                <thead className="text-xs text-muted">
+                                    <tr>
+                                        <th className="py-1 text-left font-medium">部品名</th>
+                                        <th className="py-1 text-left font-medium">品番</th>
+                                        <th className="py-1 text-right font-medium">数量</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {c.parts.map((p, i) => (
+                                        <tr key={i} className="border-t border-line">
+                                            <td className="py-1.5 pr-3">{p.n}</td>
+                                            <td className="py-1.5 pr-3 font-mono text-xs text-ink-2">{p.id ?? '—'}</td>
+                                            <td className="py-1.5 text-right tabular-nums">{p.q ?? '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </section>
+                    )}
                     {c.note && (
                         <section className="card p-4">
                             <h2 className="mb-1 text-xs font-semibold text-muted">備考</h2>
@@ -57,6 +81,7 @@ export default function CaseShow({ case: c, similar }: { case: Case; similar: Ca
                         <Info label="担当者" value={c.engineer} />
                         <Info label="費用" value={c.cost != null ? yen(c.cost) : null} />
                         <Info label="停止日数" value={c.days != null ? `${c.days}日` : null} />
+                        <Info label="状況" value={statusLabel(c.status)} />
                         <Info label="報告書番号" value={c.report_no} />
                         <Info label="見積書番号" value={c.quote_no} />
                         <Info label="登録者" value={c.submitted_by} />

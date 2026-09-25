@@ -124,4 +124,26 @@ class DriveIntegrationTest extends TestCase
         $this->assertSame('https://drive.google.com/file/d/q2/view', $b->fresh()->quote_url);
         $this->assertNull($c->fresh()->quote_url);
     }
+
+    public function test_sync_drive_machines_fills_placeholders_without_overwriting_master(): void
+    {
+        $this->fakeDrive()
+            ->folder('site-honsha', 'f1', 'B0702A0033_TruBend7036(B19)')
+            ->folder('site-honsha', 'f2', 'B1508I0077_TruBend5230(B23)')
+            ->folder('site-honsha', 'f3', 'L_0987_L3-30')
+            ->folder('site-honsha', 'f4', 'NEW0001_TruLaser1030');
+        Machine::create(['id' => 'B0702A0033', 'model' => 'B0702A0033', 'source' => 'import']); // 履歴移行時の仮登録
+        Machine::create(['id' => 'B1508I0077', 'model' => 'TruBend5230', 'site' => '本社', 'source' => 'master']);
+        Machine::create(['id' => 'L_0987', 'model' => 'salvagnini L3-30', 'source' => 'master']);
+
+        $this->artisan('navi:sync-drive-machines')->assertSuccessful();
+
+        $this->assertSame('TruBend7036(B19)', Machine::find('B0702A0033')->model);
+        $this->assertSame('本社', Machine::find('B0702A0033')->site);
+        $this->assertSame('TruBend5230', Machine::find('B1508I0077')->model); // マスタの型式は上書きしない
+        $this->assertSame('f2', Machine::find('B1508I0077')->drive_folder_id);
+        $this->assertSame('f3', Machine::find('L_0987')->drive_folder_id);   // "_" を含む機械番号
+        $this->assertSame('salvagnini L3-30', Machine::find('L_0987')->model);
+        $this->assertSame('TruLaser1030', Machine::find('NEW0001')->model);
+    }
 }

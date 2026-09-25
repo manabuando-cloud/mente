@@ -52,7 +52,8 @@ class CaseController extends Controller
         $columns = [
             'ID' => 'id', '対応日' => fn ($c) => $c->date?->format('Y-m-d'), '機種' => fn ($c) => $c->machine?->model,
             '機械番号' => 'machine_id', '拠点' => fn ($c) => $c->machine?->site, '担当者' => 'engineer', '症状' => 'symptom',
-            '原因' => 'cause', '対処' => 'action', 'エラーコード' => 'codes', '交換部品' => 'parts', '費用' => 'cost',
+            '原因' => 'cause', '対処' => 'action', 'エラーコード' => 'codes',
+            '交換部品' => fn ($c) => collect($c->parts ?? [])->map(fn ($p) => $p['n'].(isset($p['id']) ? "（{$p['id']}）" : '').(isset($p['q']) ? " ×{$p['q']}" : ''))->implode(' / '), '費用' => 'cost',
             '停止日数' => 'days', '状況' => 'status', '報告書番号' => 'report_no', '見積書番号' => 'quote_no',
             '報告書PDF' => 'report_url', '見積書PDF' => 'quote_url', '備考' => 'note', '登録者' => 'submitted_by',
         ];

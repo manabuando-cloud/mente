@@ -27,7 +27,7 @@ class SimilarCaseFinder
             ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
             ->get()
             ->map(function (TroubleCase $c) use ($queryTokens, $machine) {
-                $caseTokens = self::tokens(implode(' ', [$c->symptom, $c->cause, $c->codes, $c->parts]));
+                $caseTokens = self::tokens(implode(' ', [$c->symptom, $c->cause, $c->codes, ...$c->partNames()]));
                 $overlap = count(array_intersect_key($queryTokens, $caseTokens));
                 if ($overlap === 0) {
                     return null;

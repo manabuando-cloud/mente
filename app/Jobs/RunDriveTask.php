@@ -14,7 +14,9 @@ class RunDriveTask implements ShouldBeUnique, ShouldQueue
     use Queueable;
 
     public const COMMANDS = [
+        'sync-machines' => 'navi:sync-drive-machines',
         'ingest' => 'navi:ingest-reports',
+        'ingest-vendor' => 'navi:ingest-vendor-reports',
         'link-reports' => 'navi:link-reports',
         'link-quotes' => 'navi:link-quotes',
         'suggest-quotes' => 'navi:suggest-quotes',

@@ -43,5 +43,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/drive/run', [DriveSyncController::class, 'run'])->name('drive.run');
         Route::post('/drive/resolve', [DriveSyncController::class, 'resolve'])->name('drive.resolve');
         Route::post('/drive/quote-assign', [DriveSyncController::class, 'assignQuote'])->name('drive.quote-assign');
+        Route::post('/drive/vendor-folders/sync', [DriveSyncController::class, 'syncVendorFolders'])->name('drive.vendor-sync');
+        Route::put('/drive/vendor-folders/{folder}', [DriveSyncController::class, 'updateVendorFolder'])->name('drive.vendor-update');
     });
 });

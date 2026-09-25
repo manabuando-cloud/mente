@@ -30,12 +30,18 @@ class CaseTest extends TestCase
             'cost' => '１２，０００', // 全角入力
             'days' => '2',
             'report_url' => 'https://drive.google.com/file/d/abc/view',
+            'parts' => [
+                ['n' => 'APC910 Standard 2, LS187, BIOS', 'id' => '2009706', 'q' => '1'],
+                ['n' => 'ヒューズ', 'id' => null, 'q' => null],
+            ],
             'photos' => [UploadedFile::fake()->image('a.jpg')],
         ]);
 
         $case = TroubleCase::sole();
         $response->assertRedirect("/cases/{$case->id}")->assertSessionHas('success');
         $this->assertSame(12000, $case->cost);
+        // 部品名にカンマを含んでも1つの部品として保存される
+        $this->assertSame([['n' => 'APC910 Standard 2, LS187, BIOS', 'id' => '2009706', 'q' => 1], ['n' => 'ヒューズ']], $case->parts);
         $this->assertSame($user->email, $case->submitted_by);
         $this->assertSame(TroubleCase::REVIEW_PUBLISHED, $case->review_status);
         $this->assertNotNull($case->slack_notified_at);
@@ -72,6 +78,10 @@ class CaseTest extends TestCase
 
         $this->actingAs($this->user())->get('/cases?q=レーザー 異音')->assertInertia(fn ($p) => $p->where('cases.total', 0));
 
+        // 部品名（JSONで保存）も日本語で検索できる
+        TroubleCase::factory()->create(['machine_id' => $m->id, 'symptom' => '部品交換', 'codes' => null, 'parts' => [['n' => 'エンコーダーケーブル', 'id' => '2303966']]]);
+        $this->actingAs($this->user())->get('/cases?q=エンコーダー')->assertInertia(fn ($p) => $p->where('cases.total', 1)->where('cases.data.0.parts.0.id', '2303966'));
+
         // _ や % も文字そのものとして検索できる
         TroubleCase::factory()->create(['machine_id' => $m->id, 'symptom' => 'アラーム ALM_12 表示', 'codes' => null]);
         TroubleCase::factory()->create(['machine_id' => $m->id, 'symptom' => 'アラーム ALMX12 表示', 'codes' => null]);
@@ -85,9 +95,11 @@ class CaseTest extends TestCase
         $case = TroubleCase::factory()->create();
         $photo = $case->photos()->create(['path' => UploadedFile::fake()->image('x.jpg')->store('photos', 'public')]);
 
+        $this->assertNotNull($case->parts); // factory は「近接センサー」を入れている
         $this->actingAs($this->user())->put("/cases/{$case->id}", [
             'machine_id' => $case->machine_id,
             'symptom' => '更新後の症状',
+            // parts を送らない＝全部消した
             'quote_url' => 'https://drive.google.com/file/d/q/view',
             'remove_photo_ids' => [$photo->id],
         ])->assertRedirect("/cases/{$case->id}");
@@ -95,6 +107,7 @@ class CaseTest extends TestCase
         $case->refresh();
         $this->assertSame('更新後の症状', $case->symptom);
         $this->assertSame('https://drive.google.com/file/d/q/view', $case->quote_url);
+        $this->assertNull($case->parts);
         $this->assertCount(0, $case->photos);
         Storage::disk('public')->assertMissing($photo->path);
     }

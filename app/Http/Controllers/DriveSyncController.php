@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Presenters\CasePresenter;
 use App\Jobs\RunDriveTask;
 use App\Models\ProcessedReportFile;
 use App\Models\TroubleCase;
+use App\Models\VendorFolder;
 use App\Services\QuoteSuggester;
 use App\Services\ReportLinker;
+use App\Services\VendorReportIngestor;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -27,6 +30,9 @@ class DriveSyncController extends Controller
             'reports' => Cache::get(ReportLinker::CACHE_REPORTS),
             'quotes' => Cache::get(ReportLinker::CACHE_QUOTES),
             'quoteSuggestions' => Cache::get(QuoteSuggester::CACHE_RESULT),
+            'vendor' => Cache::get(VendorReportIngestor::CACHE_RESULT),
+            'vendorFolders' => VendorFolder::orderBy('name')->get(['id', 'name', 'mode', 'machine_id', 'scanned_at']),
+            'machines' => CasePresenter::machineOptions(),
             'stats' => [
                 'without_report' => $withoutReport,
                 'without_quote_no' => TroubleCase::published()->where(fn ($q) => $q->whereNull('quote_no')->orWhere('quote_no', ''))->count(),
@@ -88,5 +94,26 @@ class DriveSyncController extends Controller
         return $suggester->assign($data['file_id'], TroubleCase::findOrFail($data['case_id']))
             ? back()->with('success', '見積書番号と見積書PDFを対応履歴に登録しました')
             : back()->with('error', '候補が見つかりません。候補づくりをもう一度実行してください');
+    }
+
+    /** 業者別フォルダの対応表を Drive から読み直す */
+    public function syncVendorFolders(VendorReportIngestor $ingestor): RedirectResponse
+    {
+        $n = $ingestor->syncFolders()->count();
+
+        return back()->with('success', "業者別フォルダを読み込みました（{$n}件）");
+    }
+
+    /** 業者別フォルダの対応表を更新する */
+    public function updateVendorFolder(Request $request, VendorFolder $folder): RedirectResponse
+    {
+        $data = $request->validate([
+            'mode' => ['required', 'in:filename,fixed,skip'],
+            'machine_id' => ['nullable', 'required_if:mode,fixed', 'string', 'exists:machines,id'],
+        ], [], ['machine_id' => '機種']);
+
+        $folder->update(['mode' => $data['mode'], 'machine_id' => $data['mode'] === VendorFolder::MODE_FIXED ? $data['machine_id'] : null]);
+
+        return back()->with('success', "「{$folder->name}」の対応を保存しました");
     }
 }

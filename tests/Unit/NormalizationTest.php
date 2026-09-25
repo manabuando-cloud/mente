@@ -32,6 +32,15 @@ class NormalizationTest extends TestCase
         $this->assertSame(123, LegacyValue::int('１２３円'));
         $this->assertNull(LegacyValue::int(''));
         $this->assertSame('E1, E2', LegacyValue::str(['E1', 'E2']));
+        $this->assertNull(LegacyValue::str('—'));
+        $this->assertNull(LegacyValue::str(' ― '));
+        $this->assertSame('-5', LegacyValue::str('-5'));
+        $this->assertSame('650200', LegacyValue::id('650200.0'));
+        $this->assertSame('650200', LegacyValue::id(650200.0));
+        $this->assertSame('L_0987', LegacyValue::id('L_0987'));
+        $this->assertSame('#B7032, 95100197', LegacyValue::list('["#B7032","95100197"]'));
+        $this->assertNull(LegacyValue::list('[]'));
+        $this->assertSame('TRUMPF', LegacyValue::stripCode('4501_TRUMPF'));
     }
 
     public function test_tokens_ignore_hiragana_particles(): void

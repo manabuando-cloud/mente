@@ -1,4 +1,7 @@
 import { Link, router, usePoll } from '@inertiajs/react';
+import { useState } from 'react';
+import MachineSelect from '@/Components/MachineSelect';
+import type { Machine } from '@/types';
 import AppLayout from '@/Layouts/AppLayout';
 import { dateTime, yen } from '@/lib/format';
 
@@ -7,6 +10,11 @@ type Ambiguous = { case_id: string; machine_id: string; date: string | null; sym
 type LinkResult = { linked: number; ambiguous: Ambiguous[]; no_folder?: number; not_found?: number; ran_at: string } | null;
 
 const TASK_LABELS: Record<string, { title: string; desc: string }> = {
+    'sync-machines': { title: '機種マスタの補完', desc: '拠点フォルダ内の機械フォルダ名（機械番号_型式）から、機種マスタの型式・拠点・フォルダを補完します' },
+    'ingest-vendor': {
+        title: '業者別フォルダの取込み',
+        desc: '「メーカー作業報告書見積り」の報告書をAIで読み取り「取込レビュー」に追加し、見積書は同じ日の履歴に紐づけます（毎日 2:40 に自動実行）',
+    },
     ingest: { title: '作業報告書PDFの自動取込み', desc: '未処理のActivityReport PDFをAIで読み取り「取込レビュー」に追加します（毎日 2:10 に自動実行）' },
     'link-reports': { title: '報告書PDFの自動リンク', desc: 'ファイル名先頭の日付と機種で、報告書URL未設定の対応履歴にPDFを紐づけます（毎日 3:10 に自動実行）' },
     'link-quotes': { title: '見積書PDFの自動リンク', desc: '見積書番号（quote_no）を手がかりに「見積」フォルダ等からPDFを探して紐づけます' },
@@ -29,6 +37,17 @@ type QuoteSuggestion = {
     subject: string | null;
     candidates: { case_id: string; date: string; symptom: string; cost: number | null; day_diff: number; cost_match: boolean; parts_hit: number; score: number }[];
 };
+type VendorFolder = { id: string; name: string; mode: 'filename' | 'fixed' | 'skip'; machine_id: string | null; scanned_at: string | null };
+type VendorResult = {
+    created: number;
+    quotes_linked: number;
+    quotes_waiting: number;
+    skipped: number;
+    errors: number;
+    quota_exhausted: boolean;
+    unresolved: { name: string; url: string; folder: string; folder_id: string | null }[];
+    ran_at: string;
+} | null;
 type SuggestResult = { suggestions: QuoteSuggestion[]; unmatched: number; ai_used: number; quota_exhausted: boolean; ran_at: string } | null;
 
 export default function DriveIndex({
@@ -36,6 +55,9 @@ export default function DriveIndex({
     reports,
     quotes,
     quoteSuggestions,
+    vendor,
+    vendorFolders,
+    machines,
     stats,
     configured,
 }: {
@@ -43,6 +65,9 @@ export default function DriveIndex({
     reports: LinkResult;
     quotes: LinkResult;
     quoteSuggestions: SuggestResult;
+    vendor: VendorResult;
+    vendorFolders: VendorFolder[];
+    machines: Machine[];
     stats: { without_report: number; without_quote_no: number; processed_files: number; error_files: number };
     configured: { drive: boolean; gemini: boolean; slack: boolean };
 }) {
@@ -57,7 +82,7 @@ export default function DriveIndex({
                 <Badge ok={configured.slack} label="Slack Webhook" />
             </div>
 
-            <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {tasks.map((t) => (
                     <section key={t.key} className="card flex flex-col p-4">
                         <h2 className="text-sm font-bold">{TASK_LABELS[t.key]?.title ?? t.key}</h2>
@@ -90,6 +115,7 @@ export default function DriveIndex({
                 <Mini label="取込みエラーのPDF" value={stats.error_files} hint={stats.error_files ? '--retry-errors で再処理' : undefined} />
             </div>
 
+            <VendorSection folders={vendorFolders} result={vendor} machines={machines} />
             <AmbiguousList kind="reports" title="報告書：自動リンクできなかった履歴" result={reports} />
             <AmbiguousList kind="quotes" title="見積書：候補が複数あった履歴" result={quotes} />
             <QuoteSuggestions result={quoteSuggestions} />
@@ -142,6 +168,86 @@ function AmbiguousList({ kind, title, result }: { kind: 'reports' | 'quotes'; ti
                 ))}
             </div>
         </section>
+    );
+}
+
+const MODE_LABELS = { filename: 'ファイル名から判定', fixed: '1台専用（機種を固定）', skip: '対象外' } as const;
+
+function VendorSection({ folders, result, machines }: { folders: VendorFolder[]; result: VendorResult; machines: Machine[] }) {
+    return (
+        <section className="mb-6">
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="font-bold">業者別フォルダの対応表</h2>
+                <button className="text-xs text-accent-ink hover:underline" onClick={() => router.post('/drive/vendor-folders/sync', {}, { preserveScroll: true })}>
+                    Driveからフォルダ一覧を読み直す
+                </button>
+            </div>
+            <p className="mb-3 text-xs text-muted">
+                トルンプのようにファイル名に「#機械番号」が入っている報告書は自動で機械を判定します。1台専用のフォルダ（例: salvagnini_L3-30）は機種を固定してください。社内点検・カレンダーなど取り込まないフォルダは「対象外」にします。
+            </p>
+            {result && (
+                <p className="mb-3 text-xs text-muted">
+                    前回 {dateTime(result.ran_at)}：確認待ちに追加 {result.created}件 / 見積の紐づけ {result.quotes_linked}件（保留 {result.quotes_waiting}件） / 対象外 {result.skipped}件 / 機械を特定できない {result.unresolved.length}件
+                    {result.quota_exhausted && ' / ⚠ AIクォータ超過で中断'}
+                </p>
+            )}
+            {folders.length === 0 ? (
+                <p className="card p-6 text-center text-sm text-muted">まだ読み込んでいません。「Driveからフォルダ一覧を読み直す」を押してください</p>
+            ) : (
+                <div className="card divide-y divide-line">
+                    {folders.map((f) => (
+                        <VendorFolderRow key={f.id} folder={f} machines={machines} unresolved={result?.unresolved.filter((u) => u.folder_id === f.id).length ?? 0} />
+                    ))}
+                </div>
+            )}
+            {result && result.unresolved.length > 0 && (
+                <details className="mt-3">
+                    <summary className="cursor-pointer text-sm font-medium text-ink-2">機械を特定できなかったファイル（{result.unresolved.length}件）</summary>
+                    <ul className="card mt-2 max-h-80 divide-y divide-line overflow-auto text-sm">
+                        {result.unresolved.map((u) => (
+                            <li key={u.url} className="flex flex-wrap items-center gap-x-3 px-3 py-1.5">
+                                <span className="w-56 shrink-0 truncate text-xs text-muted">{u.folder}</span>
+                                <a href={u.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-accent-ink hover:underline">
+                                    📄 {u.name}
+                                </a>
+                            </li>
+                        ))}
+                    </ul>
+                </details>
+            )}
+        </section>
+    );
+}
+
+function VendorFolderRow({ folder, machines, unresolved }: { folder: VendorFolder; machines: Machine[]; unresolved: number }) {
+    const [mode, setMode] = useState(folder.mode);
+    const [machineId, setMachineId] = useState(folder.machine_id ?? '');
+    const dirty = mode !== folder.mode || (mode === 'fixed' && machineId !== (folder.machine_id ?? ''));
+
+    return (
+        <div className="grid items-center gap-2 px-3 py-2 text-sm md:grid-cols-[1fr_12rem_16rem_auto]">
+            <div className="min-w-0">
+                <a href={`https://drive.google.com/drive/folders/${folder.id}`} target="_blank" rel="noreferrer" className="block truncate hover:text-accent-ink">
+                    📁 {folder.name}
+                </a>
+                {unresolved > 0 && <span className="text-[11px] text-warn">機械を特定できないファイル {unresolved}件</span>}
+            </div>
+            <select className="input py-1.5" value={mode} onChange={(e) => setMode(e.target.value as VendorFolder['mode'])} aria-label="判定方法">
+                {Object.entries(MODE_LABELS).map(([v, l]) => (
+                    <option key={v} value={v}>
+                        {l}
+                    </option>
+                ))}
+            </select>
+            <div>{mode === 'fixed' ? <MachineSelect machines={machines} value={machineId} onChange={setMachineId} /> : <span className="text-xs text-muted">—</span>}</div>
+            <button
+                className="btn px-3 py-1.5 text-xs"
+                disabled={!dirty || (mode === 'fixed' && !machineId)}
+                onClick={() => router.put(`/drive/vendor-folders/${folder.id}`, { mode, machine_id: machineId || null }, { preserveScroll: true })}
+            >
+                保存
+            </button>
+        </div>
     );
 }
 

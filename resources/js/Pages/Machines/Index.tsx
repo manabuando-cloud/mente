@@ -44,6 +44,7 @@ export default function MachinesIndex({ filters, machines, sites }: { filters: {
                                             <div className="font-medium">{m.model}</div>
                                             <div className="text-xs text-muted">
                                                 {m.id}
+                                                {m.equipment_no && ` · 設備NO ${m.equipment_no}`}
                                                 {m.label && ` · ${m.label}`}
                                                 {m.manuals.length > 0 && ` · 📘${m.manuals.length}`}
                                             </div>

@@ -24,6 +24,7 @@ class ImportLegacyData extends Command
 {
     protected $signature = 'navi:import
         {--machines= : 機種マスタ（MACHINES の JSON、または Machines シートのCSV）}
+        {--soft= : 全社の設備マスタ（「設備マスタ一覧（SOFTエクスポート）」のCSV）}
         {--cases= : 対応履歴（Cases シートのCSV、または SEED_CASES の JSON）}
         {--pending= : 確認待ち（PendingCases シートのCSV）}
         {--ratings= : 評価（Ratings シートのCSV）}
@@ -35,12 +36,15 @@ class ImportLegacyData extends Command
     public function handle(): int
     {
         if (! array_filter($this->options(), fn ($v, $k) => $v && $k !== 'source', ARRAY_FILTER_USE_BOTH)) {
-            $this->error('取り込むファイルを1つ以上指定してください（--machines / --cases / --pending / --ratings / --consultations）');
+            $this->error('取り込むファイルを1つ以上指定してください（--soft / --machines / --cases / --pending / --ratings / --consultations）');
 
             return self::INVALID;
         }
 
         DB::transaction(function () {
+            if ($f = $this->option('soft')) {
+                $this->importSoftMaster($this->read($f));
+            }
             if ($f = $this->option('machines')) {
                 $this->importMachines($this->read($f));
             }
@@ -61,11 +65,66 @@ class ImportLegacyData extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * 設備マスタ一覧（SOFTエクスポート）。Driveの機械フォルダ名の先頭と同じ「シリアルNO」を機械番号にする。
+     * シリアルNOが空・壊れている（Excelの指数表記化など）ものは "EQ-<設備NO>" にする。
+     */
+    private function importSoftMaster(array $rows): void
+    {
+        $seen = [];
+        $n = 0;
+        $dup = [];
+        foreach ($rows as $r) {
+            $no = V::id($r['設備NO'] ?? null);
+            $serial = $this->softSerial($r);
+            if (! $no && ! $serial) {
+                continue;
+            }
+            // シリアルNOの重複は、最初の行（新しい設備順）だけシリアルそのものを機械番号にする
+            $id = match (true) {
+                $serial && ! isset($seen[$serial]) => $serial,
+                (bool) $serial => $dup[] = "{$serial}-{$no}",
+                default => "EQ-{$no}",
+            };
+            if ($serial) {
+                $seen[$serial] = true;
+            }
+
+            Machine::updateOrCreate(['id' => $id], array_filter([
+                'model' => V::str($r['設備名'] ?? null) ?? V::str($r['機械番号'] ?? null) ?? $id,
+                'maker' => V::stripCode($r['メーカー'] ?? null),
+                'label' => V::stripCode($r['呼称'] ?? null),
+                'site' => V::site($r['事業所'] ?? null),
+                'category' => V::stripCode($r['設備分類'] ?? null),
+                'equipment_no' => $no,
+                'spec' => V::str($r['仕様'] ?? null),
+                'installed_on' => V::date($r['導入日'] ?? null),
+                'source' => 'master',
+            ], fn ($v) => $v !== null));
+            $n++;
+        }
+        $this->info("設備マスタ: {$n}件");
+        if ($dup) {
+            $this->warn('シリアルNOが重複していたため、2件目以降を「シリアルNO-設備NO」で登録しました（機械マスター画面で確認してください）: '.implode(', ', $dup));
+        }
+    }
+
+    private function softSerial(array $r): ?string
+    {
+        $s = V::id($r['シリアルNO'] ?? null);
+        // "1.41E-185" のように数値化で壊れたものや、"S/N 003282" の接頭辞を扱う
+        if ($s === null || preg_match('/^\d+(\.\d+)?E[+\-]?\d+$/i', $s)) {
+            return null;
+        }
+
+        return (string) preg_replace('#^S/N\s*#i', '', $s);
+    }
+
     private function importMachines(array $rows): void
     {
         $n = 0;
         foreach ($rows as $key => $r) {
-            $id = V::str($r['id'] ?? (is_string($key) ? $key : null));
+            $id = V::id($r['id'] ?? (is_string($key) ? $key : null));
             if (! $id) {
                 continue;
             }
@@ -74,7 +133,7 @@ class ImportLegacyData extends Command
                 'model' => V::str($r['model'] ?? $r['name'] ?? null) ?? $existing?->model ?? $id,
                 'maker' => V::str($r['maker'] ?? null),
                 'label' => V::str($r['label'] ?? null),
-                'site' => V::str($r['site'] ?? null),
+                'site' => V::site($r['site'] ?? null),
                 'category' => V::str($r['category'] ?? $r['cat'] ?? null),
                 'manuals' => V::manuals($r['manuals'] ?? $r['manual'] ?? []) ?: null,
                 'source' => isset($r['submittedBy']) ? 'user' : 'master',
@@ -91,11 +150,12 @@ class ImportLegacyData extends Command
         $missingMachines = [];
         foreach ($rows as $r) {
             $id = V::str($r['id'] ?? null);
-            $symptom = V::str($r['symptom'] ?? null);
-            $machineId = V::str($r['m'] ?? $r['machine_id'] ?? null);
-            if (! $id || ! $symptom || ! $machineId) {
+            $machineId = V::id($r['m'] ?? $r['machine_id'] ?? null);
+            if (! $id || ! $machineId) {
                 continue;
             }
+            // 見積のみ・移設工事などは症状欄が「—」のことがある。記録自体は残す
+            $symptom = V::str($r['symptom'] ?? null) ?? '（症状の記録なし）';
             if (! Machine::whereKey($machineId)->exists()) {
                 // マスタに無い機種を参照している履歴も失わないよう仮登録する
                 Machine::create(['id' => $machineId, 'model' => $machineId, 'source' => 'import']);
@@ -121,8 +181,8 @@ class ImportLegacyData extends Command
                 'quote_no' => V::str($r['quoteNo'] ?? null),
                 'cause' => V::str($r['cause'] ?? null),
                 'action' => V::str($r['action'] ?? null),
-                'codes' => V::str($r['codes'] ?? null),
-                'parts' => V::str($r['parts'] ?? null),
+                'codes' => V::list($r['codes'] ?? null),
+                'parts' => TroubleCase::normalizeParts(V::str($r['parts'] ?? null) ?? []),
                 'cost' => V::int($r['cost'] ?? null),
                 'status' => V::str($r['status'] ?? null),
                 'note' => V::str($r['note'] ?? null),
@@ -193,8 +253,8 @@ class ImportLegacyData extends Command
             $createdAt = V::datetime($r['createdAt'] ?? null);
             $attrs = [
                 'trouble_case_id' => V::str($r['caseId'] ?? null),
-                'machine_id' => V::str($r['m'] ?? null),
-                'site' => V::str($r['site'] ?? null),
+                'machine_id' => V::id($r['m'] ?? null),
+                'site' => V::site($r['site'] ?? null),
                 'symptom' => $symptom,
                 'answer' => V::str($r['answer'] ?? null),
                 'similar_case_ids' => array_values((array) $similar),

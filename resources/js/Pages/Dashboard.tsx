@@ -5,12 +5,14 @@ import MachineSelect from '@/Components/MachineSelect';
 import { BarList, ColumnChart } from '@/Components/Charts';
 import type { Case, Machine } from '@/types';
 import { compact, num, yen } from '@/lib/format';
+import { statusLabel } from '@/lib/status';
 import { useState } from 'react';
 
 type Stats = {
     summary: { count: number; machines: number; total_cost: number; total_days: number; last_date: string | null };
     codes: { label: string; count: number }[];
     parts: { label: string; count: number }[];
+    status: { status: string; count: number }[];
     by_year: { year: string; count: number; cost: number }[];
     by_machine: { machine_id: string; name: string; count: number; cost: number }[];
 };
@@ -135,6 +137,9 @@ export default function Dashboard({
                 </Panel>
                 <Panel title="交換部品の頻度">
                     <BarList items={stats.parts} empty="部品交換の記録がありません" />
+                </Panel>
+                <Panel title="対応状況">
+                    <BarList items={stats.status.map((s) => ({ label: statusLabel(s.status), count: s.count }))} />
                 </Panel>
             </div>
 

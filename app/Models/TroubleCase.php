@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -83,6 +84,62 @@ class TroubleCase extends Model
                 }
             });
         }
+    }
+
+    /**
+     * 交換部品 [{n: 部品名, id: 品番, q: 数量}]。代入時は配列・JSON文字列・"部品A, 部品B" のどれでも受け付けて正規化する。
+     * 日本語をエスケープせずに保存するので LIKE 検索できる。
+     */
+    protected function parts(): Attribute
+    {
+        return Attribute::make(
+            get: function (?string $v) {
+                if ($v === null || $v === '') {
+                    return null;
+                }
+                $decoded = json_decode($v, true);
+
+                return is_array($decoded) ? $decoded : self::normalizeParts($v);
+            },
+            set: fn (mixed $v) => ($p = self::normalizeParts($v ?? [])) ? json_encode($p, JSON_UNESCAPED_UNICODE) : null,
+        );
+    }
+
+    /** 交換部品の部品名だけの配列 */
+    public function partNames(): array
+    {
+        return array_values(array_filter(array_map(fn ($p) => trim((string) ($p['n'] ?? '')), $this->parts ?? [])));
+    }
+
+    /**
+     * 交換部品の入力を正規化する。[{n,id,q}] の配列、または "部品A, 部品B" の文字列を受け付ける。
+     *
+     * @return list<array{n: string, id?: string, q?: int|float}>|null
+     */
+    public static function normalizeParts(mixed $value): ?array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : array_map(fn ($n) => ['n' => $n], self::splitList($value));
+        }
+        $parts = [];
+        foreach ((array) $value as $p) {
+            $p = is_array($p) ? $p : ['n' => (string) $p];
+            $name = trim((string) ($p['n'] ?? $p['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $part = ['n' => $name];
+            if (($id = trim((string) ($p['id'] ?? ''))) !== '') {
+                $part['id'] = $id;
+            }
+            if (isset($p['q']) && is_numeric($p['q'])) {
+                $part['q'] = $p['q'] + 0;
+            }
+            $parts[] = $part;
+        }
+
+        return $parts ?: null;
     }
 
     /** "E101, E102、E103" のような区切り文字列を配列へ */

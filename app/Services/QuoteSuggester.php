@@ -158,7 +158,7 @@ class QuoteSuggester
                 return null;
             }
             $costMatch = $amount && $c->cost && self::amountMatches($amount, $c->cost);
-            $partsHit = $items ? self::partsOverlap($items, $c->parts.' '.$c->action) : 0;
+            $partsHit = $items ? self::partsOverlap($items, implode(' ', $c->partNames()).' '.$c->action) : 0;
 
             // 日付の近さを基本点に、金額一致・部品の重なりを加点
             $score = max(0, 1 - $dayDiff / self::MAX_DAYS) * 60 + ($costMatch ? 30 : 0) + min($partsHit, 2) * 5;

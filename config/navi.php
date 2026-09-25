@@ -40,6 +40,14 @@ return [
         'credentials' => env('GOOGLE_APPLICATION_CREDENTIALS'),
     ],
 
+    // 拠点名の表記ゆれ（旧データ・設備マスタの「事業所」列）
+    'site_aliases' => [
+        '本社' => ['本社工場', '倉敷'],
+        '九州事業所' => ['九州', '九州工場'],
+        '東北工場' => ['東北', '東北事業所'],
+        '中部事業所' => ['中部', '中部工場'],
+    ],
+
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),
         'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
