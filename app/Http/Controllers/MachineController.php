@@ -45,7 +45,7 @@ class MachineController extends Controller
     private function validated(Request $request, ?Machine $machine): array
     {
         $data = $request->validate([
-            'id' => [$machine ? 'prohibited' : 'required', 'string', 'max:50', 'regex:/^[A-Za-z0-9\-]+$/', Rule::unique('machines', 'id')],
+            'id' => [$machine ? 'prohibited' : 'required', 'string', 'max:50', 'regex:/^[A-Za-z0-9_\-]+$/', Rule::unique('machines', 'id')],
             'model' => ['required', 'string', 'max:100'],
             'maker' => ['nullable', 'string', 'max:100'],
             'label' => ['nullable', 'string', 'max:100'],

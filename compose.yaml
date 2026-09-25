@@ -1,0 +1,72 @@
+# 本番用の構成例。社内サーバー（Linux + Docker）でそのまま動かせる。
+#   cp .env.example .env  → .env を本番用に編集（docs/deploy.md 参照）
+#   docker compose up -d --build
+services:
+  app:
+    build: .
+    image: setsubi-trouble-navi:latest
+    env_file: .env
+    environment:
+      CONTAINER_ROLE: web
+      DB_HOST: db
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-drive.json
+    ports:
+      - "${APP_PORT:-8080}:80"
+    volumes:
+      - storage:/var/www/html/storage
+      - ./secrets/google-drive.json:/run/secrets/google-drive.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    image: setsubi-trouble-navi:latest
+    env_file: .env
+    environment:
+      CONTAINER_ROLE: worker
+      DB_HOST: db
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-drive.json
+    volumes:
+      - storage:/var/www/html/storage
+      - ./secrets/google-drive.json:/run/secrets/google-drive.json:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+  scheduler:
+    image: setsubi-trouble-navi:latest
+    env_file: .env
+    environment:
+      CONTAINER_ROLE: scheduler
+      DB_HOST: db
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-drive.json
+    volumes:
+      - storage:/var/www/html/storage
+      - ./secrets/google-drive.json:/run/secrets/google-drive.json:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-navi}
+      MYSQL_USER: ${DB_USERNAME:-navi}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD を .env に設定してください}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD を .env に設定してください}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci", "--default-time-zone=+09:00"]
+    volumes:
+      - mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  storage:
+  mysql:

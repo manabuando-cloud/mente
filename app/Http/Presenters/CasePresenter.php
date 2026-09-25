@@ -26,9 +26,8 @@ class CasePresenter
             'cause' => $c->cause,
             'action' => $c->action,
             'codes' => TroubleCase::splitList($c->codes),
-            'parts' => TroubleCase::splitList($c->parts),
+            'parts' => $c->parts ?? [],
             'codes_raw' => $c->codes,
-            'parts_raw' => $c->parts,
             'cost' => $c->cost,
             'status' => $c->status,
             'note' => $c->note,
@@ -67,6 +66,7 @@ class CasePresenter
             'site' => $m->site,
             'category' => $m->category,
             'manuals' => $m->manuals ?? [],
+            'equipment_no' => $m->equipment_no,
             'name' => $m->displayName(),
         ];
     }

@@ -21,6 +21,11 @@ class NormalizationTest extends TestCase
         $this->assertSame('2024-03-15', DriveLocator::reportDate('20240315_1030_ActivityReport.pdf'));
         $this->assertNull(DriveLocator::reportDate('20241345_ActivityReport.pdf'));
         $this->assertNull(DriveLocator::reportDate('ActivityReport.pdf'));
+        $this->assertSame('2023-06-14', DriveLocator::reportDate('2023-06-14_作業報告書(AuDeBuMiniﾌﾞﾚｰｶ交換修理).pdf'));
+        $this->assertSame('2026-02-13', DriveLocator::reportDate('2026.2.13　北野様　絶縁ｷｬｯﾌﾟ.pdf'));
+        $this->assertSame('2026-08-24', DriveLocator::reportDate('20260824-#B0702A0033_TruBend.pdf'));
+        $this->assertNull(DriveLocator::reportDate('20270726-#A0280E0168_未来日付.pdf'));
+        $this->assertNull(DriveLocator::reportDate('2024年度カレンダー.pdf'));
     }
 
     public function test_legacy_values(): void
@@ -32,6 +37,15 @@ class NormalizationTest extends TestCase
         $this->assertSame(123, LegacyValue::int('１２３円'));
         $this->assertNull(LegacyValue::int(''));
         $this->assertSame('E1, E2', LegacyValue::str(['E1', 'E2']));
+        $this->assertNull(LegacyValue::str('—'));
+        $this->assertNull(LegacyValue::str(' ― '));
+        $this->assertSame('-5', LegacyValue::str('-5'));
+        $this->assertSame('650200', LegacyValue::id('650200.0'));
+        $this->assertSame('650200', LegacyValue::id(650200.0));
+        $this->assertSame('L_0987', LegacyValue::id('L_0987'));
+        $this->assertSame('#B7032, 95100197', LegacyValue::list('["#B7032","95100197"]'));
+        $this->assertNull(LegacyValue::list('[]'));
+        $this->assertSame('TRUMPF', LegacyValue::stripCode('4501_TRUMPF'));
     }
 
     public function test_tokens_ignore_hiragana_particles(): void

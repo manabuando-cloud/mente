@@ -3,6 +3,17 @@
 return [
 
     /*
+    | ログイン方式
+    |   google: Google Workspace アカウントでログイン（下の allowed_domain で制限）
+    |   open  : URLを知っている人なら誰でも使える。最初に名前だけ入力してもらい、
+    |           管理機能（取込レビュー・Drive連携・削除など）は admin_passcode を知っている人だけ
+    */
+    'auth_mode' => env('NAVI_AUTH_MODE', 'google'),
+
+    // open モードで管理者になるための合言葉。空なら open モードでは誰も管理者になれない
+    'admin_passcode' => env('NAVI_ADMIN_PASSCODE'),
+
+    /*
     | Google Workspace ドメイン制限（旧GAS: 「組織内の全員」デプロイ相当）。
     | 空にするとドメイン制限なし。
     */
@@ -38,6 +49,16 @@ return [
         'quote_subfolder_name' => '見積',
         // サービスアカウントのJSONキー。Driveフォルダを当該アカウントに共有しておくこと。
         'credentials' => env('GOOGLE_APPLICATION_CREDENTIALS'),
+        // Cloud Run などでは鍵ファイルを使わず、実行中のサービスアカウントの認証情報（ADC）を使う
+        'use_adc' => (bool) env('NAVI_DRIVE_USE_ADC', false),
+    ],
+
+    // 拠点名の表記ゆれ（旧データ・設備マスタの「事業所」列）
+    'site_aliases' => [
+        '本社' => ['本社工場', '倉敷'],
+        '九州事業所' => ['九州', '九州工場'],
+        '東北工場' => ['東北', '東北事業所'],
+        '中部事業所' => ['中部', '中部工場'],
     ],
 
     'gemini' => [
@@ -45,6 +66,8 @@ return [
         'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
         'endpoint' => env('GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta'),
         'timeout' => (int) env('GEMINI_TIMEOUT', 120),
+        // 無料枠は1分あたりの回数制限が厳しいので、連続で呼ぶときの最低間隔（ミリ秒）。無料枠なら 7000 程度
+        'min_interval_ms' => (int) env('GEMINI_MIN_INTERVAL_MS', 0),
     ],
 
     'slack' => [
@@ -53,6 +76,12 @@ return [
 
     // 写真の保存先ディスク（config/filesystems.php）
     'photos_disk' => env('NAVI_PHOTOS_DISK', 'public'),
+
+    // 毎日のバックアップ（navi:backup）の保存先と保存日数
+    'backup' => [
+        'path' => env('NAVI_BACKUP_PATH', storage_path('backups')),
+        'keep_days' => (int) env('NAVI_BACKUP_KEEP_DAYS', 30),
+    ],
 
     // 1回の自動取込みで処理するPDFの上限（Geminiのクォータ対策）
     'ingest_batch_limit' => (int) env('NAVI_INGEST_BATCH_LIMIT', 15),

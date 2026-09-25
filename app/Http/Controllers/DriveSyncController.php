@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Presenters\CasePresenter;
 use App\Jobs\RunDriveTask;
 use App\Models\ProcessedReportFile;
 use App\Models\TroubleCase;
+use App\Models\VendorFolder;
+use App\Services\QuoteSuggester;
 use App\Services\ReportLinker;
+use App\Services\VendorReportIngestor;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -25,6 +29,10 @@ class DriveSyncController extends Controller
             ])->values(),
             'reports' => Cache::get(ReportLinker::CACHE_REPORTS),
             'quotes' => Cache::get(ReportLinker::CACHE_QUOTES),
+            'quoteSuggestions' => Cache::get(QuoteSuggester::CACHE_RESULT),
+            'vendor' => Cache::get(VendorReportIngestor::CACHE_RESULT),
+            'vendorFolders' => VendorFolder::orderBy('name')->get(['id', 'name', 'mode', 'machine_id', 'scanned_at']),
+            'machines' => CasePresenter::machineOptions(),
             'stats' => [
                 'without_report' => $withoutReport,
                 'without_quote_no' => TroubleCase::published()->where(fn ($q) => $q->whereNull('quote_no')->orWhere('quote_no', ''))->count(),
@@ -32,7 +40,7 @@ class DriveSyncController extends Controller
                 'error_files' => ProcessedReportFile::where('result', 'like', 'error%')->count(),
             ],
             'configured' => [
-                'drive' => filled(config('navi.drive.credentials')),
+                'drive' => filled(config('navi.drive.credentials')) || config('navi.drive.use_adc'),
                 'gemini' => filled(config('navi.gemini.api_key')),
                 'slack' => filled(config('navi.slack.webhook_url')),
             ],
@@ -45,7 +53,10 @@ class DriveSyncController extends Controller
         Cache::put("navi.task.{$task}", ['status' => 'queued', 'at' => now()->toIso8601String()]);
         RunDriveTask::dispatch($task);
 
-        return back()->with('success', '実行を受け付けました。完了までしばらくお待ちください（キューワーカーが必要です）。');
+        // Cloud Run ではキューワーカーを置かず QUEUE_CONNECTION=sync で、この場で実行する
+        return back()->with('success', config('queue.default') === 'sync'
+            ? '実行しました。結果は各項目に表示されています。'
+            : '実行を受け付けました。完了までしばらくお待ちください（キューワーカーが必要です）。');
     }
 
     /** 曖昧だった紐づけを候補から選んで確定する */
@@ -66,5 +77,46 @@ class DriveSyncController extends Controller
         }
 
         return back()->with('success', 'リンクしました');
+    }
+
+    /** 見積PDFの紐づけ先候補を確定する／「該当なし」にする */
+    public function assignQuote(Request $request, QuoteSuggester $suggester): RedirectResponse
+    {
+        $data = $request->validate([
+            'file_id' => ['required', 'string'],
+            'case_id' => ['nullable', 'required_unless:dismiss,true', 'string', 'exists:trouble_cases,id'],
+            'dismiss' => ['nullable', 'boolean'],
+        ]);
+
+        if ($request->boolean('dismiss')) {
+            $suggester->dismiss($data['file_id']);
+
+            return back()->with('success', '該当なしにしました（次回以降この見積は候補に出ません）');
+        }
+
+        return $suggester->assign($data['file_id'], TroubleCase::findOrFail($data['case_id']))
+            ? back()->with('success', '見積書番号と見積書PDFを対応履歴に登録しました')
+            : back()->with('error', '候補が見つかりません。候補づくりをもう一度実行してください');
+    }
+
+    /** 業者別フォルダの対応表を Drive から読み直す */
+    public function syncVendorFolders(VendorReportIngestor $ingestor): RedirectResponse
+    {
+        $n = $ingestor->syncFolders()->count();
+
+        return back()->with('success', "業者別フォルダを読み込みました（{$n}件）");
+    }
+
+    /** 業者別フォルダの対応表を更新する */
+    public function updateVendorFolder(Request $request, VendorFolder $folder): RedirectResponse
+    {
+        $data = $request->validate([
+            'mode' => ['required', 'in:filename,fixed,skip'],
+            'machine_id' => ['nullable', 'required_if:mode,fixed', 'string', 'exists:machines,id'],
+        ], [], ['machine_id' => '機種']);
+
+        $folder->update(['mode' => $data['mode'], 'machine_id' => $data['mode'] === VendorFolder::MODE_FIXED ? $data['machine_id'] : null]);
+
+        return back()->with('success', "「{$folder->name}」の対応を保存しました");
     }
 }

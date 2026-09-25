@@ -31,6 +31,8 @@ class DashboardStats
             ],
             'codes' => $this->frequency($cases, 'codes'),
             'parts' => $this->frequency($cases, 'parts'),
+            'status' => $cases->countBy(fn ($c) => $c->status ?: 'unknown')->sortDesc()
+                ->map(fn ($n, $s) => ['status' => (string) $s, 'count' => $n])->values(),
             'by_year' => $byYear,
             'by_machine' => $cases->groupBy('machine_id')
                 ->map(fn ($g, $id) => [
@@ -53,7 +55,7 @@ class DashboardStats
 
     private function frequency(Collection $cases, string $field, int $limit = 10): Collection
     {
-        return $cases->flatMap(fn ($c) => array_unique(TroubleCase::splitList($c->{$field})))
+        return $cases->flatMap(fn ($c) => array_unique($field === 'parts' ? $c->partNames() : TroubleCase::splitList($c->{$field})))
             ->countBy()
             ->sortDesc()
             ->take($limit)

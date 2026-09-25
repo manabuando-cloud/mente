@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\RunDriveTask;
 use App\Models\Machine;
 use App\Models\ProcessedReportFile;
 use App\Models\TroubleCase;
+use App\Services\Drive\DriveClient;
+use App\Services\Drive\GoogleDriveClient;
 use App\Services\ReportLinker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -123,5 +126,57 @@ class DriveIntegrationTest extends TestCase
         $this->assertSame('https://drive.google.com/file/d/q1/view', $a->fresh()->quote_url);
         $this->assertSame('https://drive.google.com/file/d/q2/view', $b->fresh()->quote_url);
         $this->assertNull($c->fresh()->quote_url);
+    }
+
+    public function test_sync_drive_machines_fills_placeholders_without_overwriting_master(): void
+    {
+        $this->fakeDrive()
+            ->folder('site-honsha', 'f1', 'B0702A0033_TruBend7036(B19)')
+            ->folder('site-honsha', 'f2', 'B1508I0077_TruBend5230(B23)')
+            ->folder('site-honsha', 'f3', 'L_0987_L3-30')
+            ->folder('site-honsha', 'f4', 'NEW0001_TruLaser1030');
+        Machine::create(['id' => 'B0702A0033', 'model' => 'B0702A0033', 'source' => 'import']); // 履歴移行時の仮登録
+        Machine::create(['id' => 'B1508I0077', 'model' => 'TruBend5230', 'site' => '本社', 'source' => 'master']);
+        Machine::create(['id' => 'L_0987', 'model' => 'salvagnini L3-30', 'source' => 'master']);
+
+        $this->artisan('navi:sync-drive-machines')->assertSuccessful();
+
+        $this->assertSame('TruBend7036(B19)', Machine::find('B0702A0033')->model);
+        $this->assertSame('本社', Machine::find('B0702A0033')->site);
+        $this->assertSame('TruBend5230', Machine::find('B1508I0077')->model); // マスタの型式は上書きしない
+        $this->assertSame('f2', Machine::find('B1508I0077')->drive_folder_id);
+        $this->assertSame('f3', Machine::find('L_0987')->drive_folder_id);   // "_" を含む機械番号
+        $this->assertSame('salvagnini L3-30', Machine::find('L_0987')->model);
+        $this->assertSame('TruLaser1030', Machine::find('NEW0001')->model);
+    }
+
+    public function test_daily_runs_every_step_and_continues_after_failure(): void
+    {
+        $this->fakeDrive()->folder('site-honsha', 'mf', 'M1_Model');
+        config(['navi.drive.vendor_folder_id' => null]);
+
+        $this->artisan('navi:daily')
+            ->expectsOutputToContain('機種マスタの補完')
+            ->expectsOutputToContain('業者別フォルダの取込み')
+            ->expectsOutputToContain('報告書PDFの自動リンク')
+            ->assertSuccessful();
+        $this->assertNotNull(Machine::find('M1'));
+    }
+
+    public function test_failed_task_is_recorded_so_the_screen_does_not_stay_running(): void
+    {
+        $this->app->instance(DriveClient::class, new GoogleDriveClient(null, false));
+        TroubleCase::factory()->create(['report_url' => null]);
+
+        try {
+            (new RunDriveTask('link-reports'))->handle();
+            $this->fail('例外が投げ直されていない');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('Driveの認証情報がありません', $e->getMessage());
+        }
+
+        $state = Cache::get('navi.task.link-reports');
+        $this->assertSame('failed', $state['status']);
+        $this->assertStringContainsString('Driveの認証情報がありません', $state['output']);
     }
 }

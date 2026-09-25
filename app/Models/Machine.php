@@ -16,12 +16,12 @@ class Machine extends Model
 
     protected $fillable = [
         'id', 'model', 'maker', 'label', 'site', 'category', 'manuals',
-        'drive_folder_id', 'source', 'submitted_by',
+        'drive_folder_id', 'source', 'submitted_by', 'equipment_no', 'spec', 'installed_on',
     ];
 
     protected function casts(): array
     {
-        return ['manuals' => 'array'];
+        return ['manuals' => 'array', 'installed_on' => 'date:Y-m-d'];
     }
 
     public function cases(): HasMany

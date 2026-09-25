@@ -3,7 +3,8 @@ import { useMemo } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import Field from '@/Components/Field';
 import MachineSelect from '@/Components/MachineSelect';
-import type { Case, Machine } from '@/types';
+import type { Case, Machine, Part } from '@/types';
+import { STATUS_LABELS } from '@/lib/status';
 
 type FormData = {
     machine_id: string;
@@ -13,7 +14,7 @@ type FormData = {
     cause: string;
     action: string;
     codes: string;
-    parts: string;
+    parts: { n: string; id: string; q: string }[];
     cost: string;
     days: string;
     status: string;
@@ -27,7 +28,7 @@ type FormData = {
     _method?: string;
 };
 
-const STATUSES = ['完了', '対応中', '部品待ち', 'メーカー対応待ち', '経過観察'];
+const toRows = (parts: Part[] | undefined) => (parts ?? []).map((p) => ({ n: p.n, id: p.id ?? '', q: p.q?.toString() ?? '' }));
 
 export default function CaseForm({
     case: c,
@@ -47,10 +48,10 @@ export default function CaseForm({
         cause: c?.cause ?? '',
         action: c?.action ?? '',
         codes: c?.codes_raw ?? '',
-        parts: c?.parts_raw ?? '',
+        parts: toRows(c?.parts),
         cost: c?.cost?.toString() ?? '',
         days: c?.days?.toString() ?? '',
-        status: c?.status ?? '完了',
+        status: c?.status ?? 'repaired',
         report_no: c?.report_no ?? '',
         quote_no: c?.quote_no ?? '',
         report_url: c?.report_url ?? '',
@@ -66,6 +67,8 @@ export default function CaseForm({
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
+        // 部品名が空の行は送らない
+        form.transform((d) => ({ ...d, parts: d.parts.filter((p) => p.n.trim() !== '') }));
         form.post(editing ? `/cases/${c!.id}` : '/cases', { forceFormData: true });
     };
 
@@ -91,14 +94,12 @@ export default function CaseForm({
                     <Field label="対処" error={errors.action} htmlFor="action">
                         <textarea className="input min-h-20" {...text('action')} />
                     </Field>
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
                         <Field label="エラーコード" error={errors.codes} htmlFor="codes" hint="複数ある場合はカンマ区切り">
                             <input className="input font-mono" {...text('codes')} placeholder="E1234, A-56" />
                         </Field>
-                        <Field label="交換部品" error={errors.parts} htmlFor="parts" hint="複数ある場合はカンマ区切り">
-                            <input className="input" {...text('parts')} />
-                        </Field>
                     </div>
+                    <PartsEditor rows={data.parts} onChange={(rows) => setData('parts', rows)} errors={errors as Record<string, string>} />
                     <Field label="備考" error={errors.note} htmlFor="note">
                         <textarea className="input min-h-16" {...text('note')} />
                     </Field>
@@ -140,12 +141,17 @@ export default function CaseForm({
                                 <input className="input text-right tabular-nums" inputMode="numeric" {...text('days')} />
                             </Field>
                             <Field label="状況" error={errors.status} htmlFor="status" className="col-span-2">
-                                <input className="input" list="statuses" {...text('status')} />
-                                <datalist id="statuses">
-                                    {STATUSES.map((s) => (
-                                        <option key={s} value={s} />
-                                    ))}
-                                </datalist>
+                                <select className="input" {...text('status')}>
+                                    <option value="">未設定</option>
+                                    {Object.entries(STATUS_LABELS)
+                                        .filter(([k]) => k !== 'unknown')
+                                        .map(([value, label]) => (
+                                            <option key={value} value={value}>
+                                                {label}
+                                            </option>
+                                        ))}
+                                    {data.status && !(data.status in STATUS_LABELS) && <option value={data.status}>{data.status}</option>}
+                                </select>
                             </Field>
                         </div>
                     </div>
@@ -179,6 +185,44 @@ export default function CaseForm({
                 </div>
             </form>
         </AppLayout>
+    );
+}
+
+function PartsEditor({ rows, onChange, errors }: { rows: FormData['parts']; onChange: (rows: FormData['parts']) => void; errors: Record<string, string> }) {
+    const set = (i: number, patch: Partial<FormData['parts'][number]>) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+    const rowErrors = Object.entries(errors).filter(([k]) => k.startsWith('parts.'));
+
+    return (
+        <div>
+            <span className="label">交換部品</span>
+            {rows.length > 0 && (
+                <div className="mb-1 hidden grid-cols-[1fr_9rem_5rem_2rem] gap-1.5 text-[11px] text-muted sm:grid">
+                    <span>部品名</span>
+                    <span>品番</span>
+                    <span>数量</span>
+                </div>
+            )}
+            <div className="space-y-1.5">
+                {rows.map((r, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_6rem_2rem] gap-1.5 sm:grid-cols-[1fr_9rem_5rem_2rem]">
+                        <input className="input col-span-3 sm:col-span-1" placeholder="部品名" aria-label="部品名" value={r.n} onChange={(e) => set(i, { n: e.target.value })} />
+                        <input className="input font-mono" placeholder="品番" aria-label="品番" value={r.id} onChange={(e) => set(i, { id: e.target.value })} />
+                        <input className="input text-right tabular-nums" inputMode="decimal" placeholder="数量" aria-label="数量" value={r.q} onChange={(e) => set(i, { q: e.target.value })} />
+                        <button type="button" className="btn px-0" aria-label="この部品を削除" onClick={() => onChange(rows.filter((_, j) => j !== i))}>
+                            ×
+                        </button>
+                    </div>
+                ))}
+            </div>
+            {rowErrors.map(([k, v]) => (
+                <p key={k} className="mt-1 text-xs text-bad">
+                    {v}
+                </p>
+            ))}
+            <button type="button" className="mt-1.5 text-xs text-accent-ink hover:underline" onClick={() => onChange([...rows, { n: '', id: '', q: '1' }])}>
+                ＋ 部品を追加
+            </button>
+        </div>
     );
 }
 

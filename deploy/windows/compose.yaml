@@ -1,0 +1,76 @@
+# 設備トラブルナビ Windows PC 1台構成（WSL2 の Ubuntu + Docker Engine で動かす）
+#   DB は SQLite（storage ボリューム内の1ファイル）。費用はかからない
+#   社外公開は Cloudflare Tunnel（--profile tunnel）または ngrok（--profile ngrok）
+# 使い方は docs/deploy-windows.md。この compose は deploy/windows/ で実行する
+name: setsubi-navi
+
+x-app: &app
+  build: ../..
+  image: setsubi-trouble-navi:local
+  env_file: .env
+  environment: &app-env
+    DB_CONNECTION: sqlite
+    DB_DATABASE: /var/www/html/storage/app/db/navi.sqlite
+    DB_JOURNAL_MODE: wal
+    DB_BUSY_TIMEOUT: "10000"
+    DB_SYNCHRONOUS: normal
+    NAVI_BACKUP_PATH: /backup
+  volumes:
+    - storage:/var/www/html/storage
+    - ./secrets:/var/www/html/storage/app/secrets:ro
+    - ${BACKUP_DIR:-/mnt/c/setsubi-navi-backup}:/backup
+  restart: unless-stopped
+
+services:
+  app:
+    <<: *app
+    environment:
+      <<: *app-env
+      CONTAINER_ROLE: web
+    ports:
+      - "${APP_PORT:-8080}:80"
+
+  worker:
+    <<: *app
+    environment:
+      <<: *app-env
+      CONTAINER_ROLE: worker
+    depends_on:
+      app:
+        condition: service_healthy
+
+  scheduler:
+    <<: *app
+    environment:
+      <<: *app-env
+      CONTAINER_ROLE: scheduler
+    depends_on:
+      app:
+        condition: service_healthy
+
+  # 社外公開（Cloudflare Tunnel）。Cloudflare のダッシュボードでトンネルを作り、トークンを .env の TUNNEL_TOKEN に入れる
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles: [tunnel]
+
+  # 社外公開（ngrok 無料プランの固定ドメイン）。Cloudflare 用のドメインが無い場合の代わり
+  ngrok:
+    image: ngrok/ngrok:latest
+    command: http app:80 --url=${NGROK_DOMAIN:-}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles: [ngrok]
+
+volumes:
+  storage:
