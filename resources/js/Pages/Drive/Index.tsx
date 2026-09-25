@@ -40,6 +40,7 @@ type QuoteSuggestion = {
 type VendorFolder = { id: string; name: string; mode: 'filename' | 'fixed' | 'skip'; machine_id: string | null; scanned_at: string | null };
 type VendorResult = {
     created: number;
+    linked_existing?: number;
     quotes_linked: number;
     quotes_waiting: number;
     skipped: number;
@@ -187,7 +188,7 @@ function VendorSection({ folders, result, machines }: { folders: VendorFolder[];
             </p>
             {result && (
                 <p className="mb-3 text-xs text-muted">
-                    前回 {dateTime(result.ran_at)}：確認待ちに追加 {result.created}件 / 見積の紐づけ {result.quotes_linked}件（保留 {result.quotes_waiting}件） / 対象外 {result.skipped}件 / 機械を特定できない {result.unresolved.length}件
+                    前回 {dateTime(result.ran_at)}：確認待ちに追加 {result.created}件 / 既存の履歴にリンク {result.linked_existing ?? 0}件 / 見積の紐づけ {result.quotes_linked}件（保留 {result.quotes_waiting}件） / 対象外 {result.skipped}件 / 機械を特定できない {result.unresolved.length}件
                     {result.quota_exhausted && ' / ⚠ AIクォータ超過で中断'}
                 </p>
             )}

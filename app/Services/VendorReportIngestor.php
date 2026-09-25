@@ -28,9 +28,14 @@ class VendorReportIngestor
 {
     public const CACHE_RESULT = 'navi.vendor.last';
 
-    private const SKIP_PATTERN = '/チェックリスト|ﾁｪｯｸﾘｽﾄ|点検表|納品書|請求書|写真|Thumbs\.db/iu';
+    // 実際のフォルダにある報告書・見積以外の書類（2026-09 時点の一覧で確認）
+    private const SKIP_PATTERN = '/チェックリスト|ﾁｪｯｸﾘｽﾄ|check\s*(list|sheet)|チェックシート|図面|点検表|納品書|請求書|写真|取説|取扱説明|カレンダー|案内|電力量|Thumbs\.db/iu';
 
-    private const QUOTE_PATTERN = '/見積|御見積|est[_\-]?\d{6,}|SQJ\d+/iu';
+    /** 既定で対象外にするフォルダ */
+    private const DEFAULT_SKIP = ['カレンダー'];
+
+    // 半角カナの「ﾐﾂﾓﾘ」、部品価格・金額の書類も見積として扱う
+    private const QUOTE_PATTERN = '/見積|ﾐﾂﾓﾘ|ミツモリ|価格|ｶｶｸ|金額|ｷﾝｶﾞｸ|est[_\-]?\d{6,}|SQJ\d+/iu';
 
     /** 既定の対応表（フォルダ名 → 機械番号）。画面で変更したものが優先される */
     private const DEFAULT_FIXED = [
@@ -63,11 +68,16 @@ class VendorReportIngestor
                 continue;
             }
             $fixed = self::DEFAULT_FIXED[$f['name']] ?? null;
+            $fixed = $fixed && Machine::whereKey($fixed)->exists() ? $fixed : null;
             VendorFolder::create([
                 'id' => $f['id'],
                 'name' => $f['name'],
-                'mode' => $fixed && Machine::whereKey($fixed)->exists() ? VendorFolder::MODE_FIXED : VendorFolder::MODE_FILENAME,
-                'machine_id' => $fixed && Machine::whereKey($fixed)->exists() ? $fixed : null,
+                'mode' => match (true) {
+                    in_array($f['name'], self::DEFAULT_SKIP, true) => VendorFolder::MODE_SKIP,
+                    (bool) $fixed => VendorFolder::MODE_FIXED,
+                    default => VendorFolder::MODE_FILENAME,
+                },
+                'machine_id' => $fixed,
             ]);
         }
 
@@ -80,7 +90,7 @@ class VendorReportIngestor
     public function ingest(?int $limit = null, bool $dryRun = false): array
     {
         $limit ??= config('navi.ingest_batch_limit');
-        $result = ['created' => 0, 'quotes_linked' => 0, 'quotes_waiting' => 0, 'skipped' => 0, 'errors' => 0, 'quota_exhausted' => false, 'unresolved' => [], 'messages' => [], 'plan' => []];
+        $result = ['created' => 0, 'linked_existing' => 0, 'quotes_linked' => 0, 'quotes_waiting' => 0, 'skipped' => 0, 'errors' => 0, 'quota_exhausted' => false, 'unresolved' => [], 'messages' => [], 'plan' => []];
 
         $folders = $this->syncFolders();
         $known = KnownDriveFiles::ids();
@@ -107,7 +117,15 @@ class VendorReportIngestor
                     ? $folder->machine
                     : $matcher($file['name']);
                 if ($dryRun) {
-                    $kind = ! $machine ? '機械不明' : (preg_match(self::QUOTE_PATTERN, $file['name']) ? '見積' : '報告書');
+                    $kind = match (true) {
+                        ! $machine => '機械不明',
+                        (bool) preg_match(self::QUOTE_PATTERN, $file['name']) => '見積',
+                        default => match ($this->reports->existingDecision($machine, $file)[0]) {
+                            'link' => '既存にリンク',
+                            'skip' => '既存あり（取込まない）',
+                            default => '新規（AIで読む）',
+                        },
+                    };
                     $result['plan'][] = [$folder?->name ?? '（直下）', $file['name'], $machine?->id ?? '', $kind];
                     $kind === '機械不明' && $result['unresolved'][] = ['name' => $file['name'], 'url' => DriveLocator::webLink($file), 'folder' => $folder?->name ?? '（直下）', 'folder_id' => $folder?->id];
 
@@ -179,8 +197,11 @@ class VendorReportIngestor
     }
 
     /**
-     * ファイル名から機械を探す関数を返す。"#<機械番号>" を最優先し、無ければ登録済み機械番号（6文字以上）の部分一致。
-     * 複数の機械番号に一致したら特定できないものとして扱う。
+     * ファイル名から機械を探す関数を返す。
+     *   1. "#<機械番号>"（トルンプ: "20260824-#B0702A0033_..." / "Las18127#A0231A0105.pdf"）
+     *   2. 登録済み機械番号（6文字以上）がそのまま含まれる（"SAS37VD-6E／J3E0AV0281"）
+     *   3. 型式名が含まれ、その型式の機械が1台だけ（"AuDeBuMini" → AuDeBu Mini）
+     * どれも1台に絞れなければ特定できないものとして扱う。
      *
      * @return \Closure(string): ?Machine
      */
@@ -189,17 +210,43 @@ class VendorReportIngestor
         $machines = Machine::all()->keyBy('id');
         $ids = $machines->keys()->filter(fn ($id) => strlen($id) >= 6 && ! str_starts_with($id, 'EQ-'))
             ->sortByDesc(fn ($id) => strlen($id))->values();
+        // 型式名（英数字だけに正規化して8文字以上）→ 機械。同じ型式が複数台あるものは使わない
+        $allModels = $machines->map(fn ($m) => self::normModel($m->model));
+        $models = $machines->groupBy(fn ($m) => self::normModel($m->model))
+            ->filter(fn ($g, $key) => strlen($key) >= 8 && $g->count() === 1
+                // "trumatic6000fiber" のように他の型式名（"trumatic6000fiberk06"）に含まれるものは曖昧なので使わない
+                && ! $allModels->contains(fn ($other) => $other !== $key && str_contains($other, $key)))
+            ->map(fn ($g) => $g->first());
 
-        return function (string $name) use ($machines, $ids): ?Machine {
-            if (preg_match('/#\s*([A-Za-z0-9_\-]{6,}?)(?=[_\s(（]|$)/u', $name, $m) && isset($machines[$m[1]])) {
+        return function (string $name) use ($machines, $ids, $models): ?Machine {
+            $name = mb_convert_kana($name, 'as');
+            $tagged = preg_match('/#\s*([A-Za-z0-9_\-]{6,}?)(?=[_\s(（.]|$)/u', $name, $m);
+            if ($tagged && isset($machines[$m[1]])) {
                 return $machines[$m[1]];
             }
             $upper = strtoupper($name);
             $hits = $ids->filter(fn ($id) => preg_match('/(?<![A-Z0-9])'.preg_quote(strtoupper($id), '/').'(?![A-Z0-9])/', $upper))->values();
             // 長い機械番号に含まれる短い機械番号の一致は除く
             $hits = $hits->reject(fn ($id) => $hits->contains(fn ($other) => $other !== $id && str_contains($other, $id)))->values();
+            if ($hits->count() === 1) {
+                return $machines[$hits[0]];
+            }
+            // "#<機械番号>" があるのに未登録なら打ち間違いの可能性があるので、型式名での推測はしない
+            if ($hits->isEmpty() && ! $tagged) {
+                $flat = self::normModel($name);
+                $byModel = $models->filter(fn ($m, $key) => str_contains($flat, $key));
+                // 長い型式名に含まれる短い型式名の一致は除く（"TruBend5170" と "TruBend5170+TM" など）
+                $byModel = $byModel->reject(fn ($m, $key) => $byModel->keys()->contains(fn ($other) => $other !== $key && str_contains($other, $key)));
 
-            return $hits->count() === 1 ? $machines[$hits[0]] : null;
+                return $byModel->count() === 1 ? $byModel->first() : null;
+            }
+
+            return null;
         };
+    }
+
+    private static function normModel(?string $v): string
+    {
+        return strtolower((string) preg_replace('/[^A-Za-z0-9]/', '', mb_convert_kana((string) $v, 'as')));
     }
 }

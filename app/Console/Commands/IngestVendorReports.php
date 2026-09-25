@@ -22,7 +22,7 @@ class IngestVendorReports extends Command
             return self::SUCCESS;
         }
         $r = $ingestor->ingest($this->option('limit') ? (int) $this->option('limit') : null);
-        $this->info("確認待ちに追加: {$r['created']}件 / 見積の紐づけ: {$r['quotes_linked']}件（保留 {$r['quotes_waiting']}件） / 対象外: {$r['skipped']}件 / 機械を特定できない: ".count($r['unresolved']).'件 / エラー: '.$r['errors'].'件');
+        $this->info("確認待ちに追加: {$r['created']}件 / 既存の履歴にリンク: {$r['linked_existing']}件 / 見積の紐づけ: {$r['quotes_linked']}件（保留 {$r['quotes_waiting']}件） / 対象外: {$r['skipped']}件 / 機械を特定できない: ".count($r['unresolved']).'件 / エラー: '.$r['errors'].'件');
         foreach ($r['messages'] as $m) {
             $this->line('  - '.$m);
         }

@@ -63,7 +63,7 @@ class ReportIngestor
     public function ingest(?int $limit = null, bool $retryErrors = false): array
     {
         $limit ??= config('navi.ingest_batch_limit');
-        $result = ['created' => 0, 'skipped' => 0, 'errors' => 0, 'quota_exhausted' => false, 'messages' => []];
+        $result = ['created' => 0, 'linked_existing' => 0, 'skipped' => 0, 'errors' => 0, 'quota_exhausted' => false, 'messages' => []];
         $known = KnownDriveFiles::ids($retryErrors);
 
         foreach ($this->locator->machineFolders() as $mf) {
@@ -92,9 +92,30 @@ class ReportIngestor
 
     /**
      * 1ファイルを取り込んで $result を更新する。クォータ超過で中断すべきとき false を返す。
+     *
+     * 旧データの履歴の多くは同じ報告書から手で作られているので、AIで読む前に
+     * 同じ機械・同じ日付の履歴を探す:
+     *   - 1件で報告書URLが空 → その履歴にPDFをリンクするだけ（AIは使わない）
+     *   - それ以外で既存がある（URL設定済み・複数） → 重複の可能性が高いので取り込まない
+     *   - 無い → AIで読んで確認待ちにする
      */
     public function ingestOne(Machine $machine, array $file, array &$result, ?string $context = null): bool
     {
+        [$decision, $target] = $this->existingDecision($machine, $file);
+        if ($decision === 'link') {
+            $target->update(['report_url' => DriveLocator::webLink($file)]);
+            $this->markProcessed($file, $machine->id, 'linked_existing');
+            $result['linked_existing'] = ($result['linked_existing'] ?? 0) + 1;
+
+            return true;
+        }
+        if ($decision === 'skip') {
+            $this->markProcessed($file, $machine->id, 'skipped_existing');
+            $result['skipped'] = ($result['skipped'] ?? 0) + 1;
+
+            return true;
+        }
+
         try {
             $this->createPendingCase($machine, $file, $context);
             $result['created']++;
@@ -114,6 +135,27 @@ class ReportIngestor
 
             return true;
         }
+    }
+
+    /**
+     * 同じ機械・同じ日付の既存履歴に対してどうするか。
+     *
+     * @return array{0: 'link'|'skip'|null, 1: ?TroubleCase}
+     */
+    public function existingDecision(Machine $machine, array $file): array
+    {
+        $date = DriveLocator::reportDate($file['name']);
+        if (! $date) {
+            return [null, null];
+        }
+        $existing = TroubleCase::where('machine_id', $machine->id)->whereDate('date', $date)
+            ->where('review_status', '!=', TroubleCase::REVIEW_REJECTED)->get();
+
+        return match (true) {
+            $existing->count() === 1 && ! $existing->first()->report_url => ['link', $existing->first()],
+            $existing->isNotEmpty() => ['skip', null],
+            default => [null, null],
+        };
     }
 
     private function createPendingCase(Machine $machine, array $file, ?string $context): TroubleCase

@@ -67,7 +67,7 @@ class VendorIngestTest extends TestCase
             ->folder('vendor', 'v-salva', '作業報告書-見積書(salvagnini_L3-30)')
             ->file('v-salva', 's1', '20241019_L3_report(Z軸リニアガイド一式交換).pdf')
             ->file('v-salva', 's2', '20260728_L3_倉敷レーサ゛ー㈱様向けIPG製発振器モシ゛ュール交換_納品書.pdf')
-            ->folder('vendor', 'v-cal', 'カレンダー')
+            ->folder('vendor', 'v-cal', '作業報告書(社内点検)')
             ->file('v-cal', 'cal1', '20251221_B0702A0033_メモ.pdf');
 
         $this->artisan('navi:ingest-vendor-reports')->assertSuccessful();
@@ -75,7 +75,7 @@ class VendorIngestTest extends TestCase
         // 既定の対応表で salvagnini フォルダは L_0987 に固定される
         $this->assertSame(VendorFolder::MODE_FIXED, VendorFolder::find('v-salva')->mode);
         $this->assertSame('L_0987', TroubleCase::where('source_file_id', 's1')->sole()->machine_id);
-        // カレンダーは「ファイル名から判定」なので機械番号があれば取り込まれてしまう → 対象外にする
+        // 社内点検フォルダは「ファイル名から判定」なので機械番号があれば取り込まれる → 対象外にできる
         $this->assertSame(1, TroubleCase::where('source_file_id', 'cal1')->count());
 
         TroubleCase::where('source_file_id', 'cal1')->delete();
@@ -123,11 +123,63 @@ class VendorIngestTest extends TestCase
             ->file('v-trumpf', 'q1', '20260824-#B0702A0033_TruBend_7036_(B19)_事後見積り.pdf');
 
         $this->artisan('navi:ingest-vendor-reports', ['--dry-run' => true])
-            ->expectsOutputToContain('報告書: 1件 / 見積: 1件')
+            ->expectsOutputToContain('新規（AIで読む）: 1件 / 見積: 1件')
             ->assertSuccessful();
 
         $this->assertSame(0, TroubleCase::count());
         $this->assertSame(0, ProcessedReportFile::count());
         Http::assertNothingSent();
+    }
+
+    public function test_real_world_name_variants(): void
+    {
+        Machine::create(['id' => '1000482', 'model' => 'AuDeBu Mini', 'maker' => 'ｵｰｾﾝﾃｯｸ株式会社']);
+        Machine::create(['id' => 'B0403A0045', 'model' => 'TruBendCell7036']);
+        Machine::create(['id' => 'B0403A0306', 'model' => 'TruBend Cell 7036']); // 同じ型式が2台
+        Machine::create(['id' => 'A0121D0128', 'model' => 'TruMatic6000fiber']); // 別の機械の型式名「TruMatic6000fiber(K06)」に含まれる
+        $this->fakeDrive()
+            ->folder('vendor', 'v-auth', '作業報告書-見積書(オーセンテック)')
+            ->file('v-auth', 'a1', '2023-06-14_作業報告書(AuDeBuMiniﾌﾞﾚｰｶ交換修理).pdf')
+            ->folder('vendor', 'v-tohoku', '東北事業所_トルンプ作業報告書')
+            ->file('v-tohoku', 't1', 'Las18127#A0121C0046.pdf')
+            ->file('v-tohoku', 't2', 'Lak18046#A0121C0046_ CheckList.pdf')
+            ->file('v-tohoku', 't3', '20200619-#A0121D0046_Trumatic6000fiber(ｽｹｼﾞｭｰﾗPCｺｼｮｳ).pdf')
+            ->file('v-tohoku', 't4', '20230919-#A0121C0046_Trumatic6000fiber(ｺﾝﾊﾟｸﾄｶｯﾀｰﾄｳｺｳｶﾝ)ﾐﾂﾓﾘ.pdf')
+            ->folder('vendor', 'v-tb', '作業報告書-見積書(TruBend)')
+            ->file('v-tb', 'b1', '20181018-Trubendcell7036_TS作業報告書.pdf')
+            ->folder('vendor', 'v-cal', 'カレンダー')
+            ->file('v-cal', 'cal', '2024年度カレンダー.pdf');
+
+        $plan = collect(app(VendorReportIngestor::class)->ingest(null, true)['plan'])
+            ->mapWithKeys(fn ($row) => [$row[1] => [$row[2], $row[3]]]);
+
+        $this->assertSame(['1000482', '新規（AIで読む）'], $plan['2023-06-14_作業報告書(AuDeBuMiniﾌﾞﾚｰｶ交換修理).pdf']); // 型式名で特定
+        $this->assertSame(['A0121C0046', '新規（AIで読む）'], $plan['Las18127#A0121C0046.pdf']);
+        $this->assertSame(['', '対象外'], $plan['Lak18046#A0121C0046_ CheckList.pdf']);
+        $this->assertSame(['', '機械不明'], $plan['20200619-#A0121D0046_Trumatic6000fiber(ｽｹｼﾞｭｰﾗPCｺｼｮｳ).pdf']); // 型式名で別の機械に推測しない
+        $this->assertSame(['A0121C0046', '見積'], $plan['20230919-#A0121C0046_Trumatic6000fiber(ｺﾝﾊﾟｸﾄｶｯﾀｰﾄｳｺｳｶﾝ)ﾐﾂﾓﾘ.pdf']);
+        $this->assertSame(['', '機械不明'], $plan['20181018-Trubendcell7036_TS作業報告書.pdf']); // 同じ型式が2台あるので特定しない
+        $this->assertFalse($plan->has('2024年度カレンダー.pdf')); // カレンダーフォルダは既定で対象外
+        $this->assertSame(VendorFolder::MODE_SKIP, VendorFolder::find('v-cal')->mode);
+    }
+
+    public function test_reports_matching_existing_legacy_cases_are_linked_without_ai(): void
+    {
+        $this->fakeDrive()
+            ->folder('vendor', 'v-trumpf', '作業報告書-見積書(トルンプ)')
+            ->file('v-trumpf', 'r1', '20240604-#A0121C0046_Trumatic6000fiber_作業報告書.pdf')
+            ->file('v-trumpf', 'r2', '20240605-#A0121C0046_Trumatic6000fiber_作業報告書.pdf')
+            ->file('v-trumpf', 'r3', '20240606-#A0121C0046_Trumatic6000fiber_作業報告書.pdf');
+        // 旧データ: 6/4 は報告書URL無し、6/5 は別のPDFがリンク済み、6/6 は履歴なし
+        $noUrl = TroubleCase::factory()->create(['machine_id' => 'A0121C0046', 'date' => '2024-06-04', 'report_url' => null]);
+        TroubleCase::factory()->create(['machine_id' => 'A0121C0046', 'date' => '2024-06-05', 'report_url' => 'https://drive.google.com/file/d/other/view']);
+
+        $this->artisan('navi:ingest-vendor-reports')->expectsOutputToContain('既存の履歴にリンク: 1件')->assertSuccessful();
+
+        $this->assertSame('https://drive.google.com/file/d/r1/view', $noUrl->fresh()->report_url);
+        $this->assertSame(1, TroubleCase::where('source_file_id', 'r3')->count()); // 新規だけAIで読む
+        $this->assertSame(0, TroubleCase::where('source_file_id', 'r2')->count());
+        Http::assertSentCount(1);
+        $this->assertSame('skipped_existing', ProcessedReportFile::find('r2')->result);
     }
 }

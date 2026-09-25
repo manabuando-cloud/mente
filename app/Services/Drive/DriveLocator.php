@@ -127,10 +127,15 @@ class DriveLocator
      */
     public static function reportDate(string $fileName): ?string
     {
-        if (! preg_match('/^(\d{4})(\d{2})(\d{2})(?!\d)/', $fileName, $m) || ! checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+        // 先頭の "20240315" / "2023-06-14" / "2026.2.13"（実際のファイル名にある形）
+        if (! preg_match('/^(\d{4})(?:(\d{2})(\d{2})(?!\d)|[\-.](\d{1,2})[\-.](\d{1,2})(?!\d))/', $fileName, $m)) {
             return null;
         }
-        $date = "{$m[1]}-{$m[2]}-{$m[3]}";
+        [$y, $mo, $d] = [(int) $m[1], (int) (($m[2] ?? '') !== '' ? $m[2] : $m[4]), (int) (($m[3] ?? '') !== '' ? $m[3] : $m[5])];
+        if (! checkdate($mo, $d, $y)) {
+            return null;
+        }
+        $date = sprintf('%04d-%02d-%02d', $y, $mo, $d);
 
         return $date <= now()->addDay()->format('Y-m-d') ? $date : null;
     }
