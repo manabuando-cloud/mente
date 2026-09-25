@@ -2,9 +2,9 @@ import { Head, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import type { SharedProps } from '@/types';
 
-type Props = { mode: 'google' | 'open'; devLogin: boolean; domain: string | null; adminPasscodeEnabled: boolean };
+type Props = { mode: 'google' | 'open'; devLogin: boolean; domain: string | null; adminPasscodeEnabled: boolean; googleConfigured: boolean };
 
-export default function Login({ mode, devLogin, domain, adminPasscodeEnabled }: Props) {
+export default function Login({ mode, devLogin, domain, adminPasscodeEnabled, googleConfigured }: Props) {
     const { flash } = usePage<SharedProps>().props;
 
     return (
@@ -19,13 +19,17 @@ export default function Login({ mode, devLogin, domain, adminPasscodeEnabled }: 
 
                 {mode === 'open' ? (
                     <OpenLogin adminPasscodeEnabled={adminPasscodeEnabled} />
-                ) : (
+                ) : googleConfigured ? (
                     <>
                         <a href="/auth/google" className="btn btn-primary mt-6 w-full py-2.5">
                             Googleアカウントでログイン
                         </a>
                         {domain && <p className="mt-2 text-xs text-muted">@{domain} のアカウントのみ利用できます</p>}
                     </>
+                ) : (
+                    <p className="mt-6 rounded-lg bg-warn-soft px-3 py-2 text-left text-sm text-warn">
+                        Googleログインの設定がまだ済んでいません。管理者は .env に GOOGLE_CLIENT_ID と GOOGLE_CLIENT_SECRET を設定してください（手順書「Googleログインを設定する」）。
+                    </p>
                 )}
 
                 {devLogin && <DevLogin />}

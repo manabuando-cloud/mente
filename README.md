@@ -67,7 +67,7 @@ npm run build
 
 ## 本番デプロイ
 
-- **Windows PC（kltech04）・費用ゼロ**: **[docs/deploy-windows.md](docs/deploy-windows.md)**（`deploy/windows/navi.sh`）。現在の本番の想定。WSL2 + Docker Engine + SQLite、社外公開は Cloudflare Tunnel
+- **Windows PC（kltech04）・費用ゼロ**: **[docs/deploy-windows.md](docs/deploy-windows.md)**（`deploy/windows/navi.sh`）。現在の本番の想定。WSL2 + Docker Engine + SQLite、会社の Google アカウントでログイン、公開URLは ngrok（無料の固定ドメイン）
 - Google Cloud（Cloud Run・要課金）: [docs/deploy-cloudrun.md](docs/deploy-cloudrun.md)（`deploy/cloudrun/deploy.sh`）
 - Linux サーバー（Docker + MySQL / `compose.yaml`）: [docs/deploy.md](docs/deploy.md)
 

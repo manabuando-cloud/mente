@@ -43,11 +43,10 @@ setup() {
     echo "== 設定ファイル deploy/windows/.env を作ります"
     cp env.example .env
     sed -i "s#^APP_KEY=.*#APP_KEY=base64:$(head -c 32 /dev/urandom | base64)#" .env
-    local passcode
-    passcode="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 10)"
-    sed -i "s#^NAVI_ADMIN_PASSCODE=.*#NAVI_ADMIN_PASSCODE=${passcode}#" .env
-    echo "   管理者パスコード: ${passcode}  （.env の NAVI_ADMIN_PASSCODE でいつでも確認・変更できます）"
-    echo "   Gemini のキーなどは .env を編集して入れてください:  nano deploy/windows/.env"
+    # open モードに切り替えたとき用の管理者パスコード（Google ログインでは使わない）
+    sed -i "s#^NAVI_ADMIN_PASSCODE=.*#NAVI_ADMIN_PASSCODE=$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 10)#" .env
+    echo "   Google ログインの設定（GOOGLE_CLIENT_ID など）と Gemini のキーは .env を編集して入れてください:"
+    echo "     nano ~/setsubi-navi/deploy/windows/.env   （手順書 docs/deploy-windows.md の 3〜5章）"
   fi
   mkdir -p secrets
   local backup_dir

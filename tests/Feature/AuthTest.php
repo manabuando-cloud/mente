@@ -20,6 +20,25 @@ class AuthTest extends TestCase
         $this->get('/login')->assertOk()->assertInertia(fn ($p) => $p->component('Auth/Login'));
     }
 
+    public function test_login_page_tells_when_google_is_not_configured(): void
+    {
+        config(['services.google.client_id' => null]);
+        $this->get('/login')->assertInertia(fn ($p) => $p->where('googleConfigured', false));
+        $this->get('/auth/google')->assertRedirect('/login')->assertSessionHas('error');
+
+        config(['services.google.client_id' => 'id', 'services.google.client_secret' => 'secret']);
+        $this->get('/login')->assertInertia(fn ($p) => $p->where('googleConfigured', true));
+    }
+
+    public function test_google_redirect_uses_the_host_the_user_came_from(): void
+    {
+        // 戻り先URLは相対パスで設定し、アクセスしたURL（localhost / 公開URL）に合わせる
+        config(['services.google.client_id' => 'id', 'services.google.client_secret' => 'secret', 'services.google.redirect' => '/auth/google/callback']);
+        $location = $this->get('https://xxxx.ngrok-free.app/auth/google')->headers->get('Location');
+        $this->assertStringContainsString(urlencode('https://xxxx.ngrok-free.app/auth/google/callback'), $location);
+        $this->assertStringContainsString('hd=g.kurashiki-laser.co.jp', $location);
+    }
+
     public function test_google_callback_logs_in_workspace_user(): void
     {
         $this->mockGoogleUser('taro@g.kurashiki-laser.co.jp');

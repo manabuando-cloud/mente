@@ -22,12 +22,16 @@ class GoogleLoginController extends Controller
             'devLogin' => $this->devLoginEnabled(),
             'domain' => config('navi.allowed_domain'),
             'adminPasscodeEnabled' => filled(config('navi.admin_passcode')),
+            'googleConfigured' => filled(config('services.google.client_id')) && filled(config('services.google.client_secret')),
         ]);
     }
 
     public function redirect(): RedirectResponse
     {
         abort_if(config('navi.auth_mode') === 'open', 404);
+        if (blank(config('services.google.client_id')) || blank(config('services.google.client_secret'))) {
+            return redirect()->route('login')->with('error', 'Googleログインの設定（GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET）がまだです。');
+        }
 
         $driver = Socialite::driver('google');
         if ($domain = config('navi.allowed_domain')) {

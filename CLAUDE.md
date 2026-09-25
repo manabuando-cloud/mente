@@ -13,7 +13,8 @@ Laravel 13 + Inertia 3 + React 19 (TypeScript) + Tailwind 4。旧GAS版の仕様
 ## 本番
 - 社内の Windows PC（kltech04）で WSL2 + Docker Engine（`deploy/windows/`、手順は `docs/deploy-windows.md`）。DB は SQLite（WAL）、バックアップは `navi:backup`。課金なしが前提
 - 代替: Cloud Run（`deploy/cloudrun/`。キューワーカーは置かず `QUEUE_CONNECTION=sync`、毎日の処理は `navi:daily`）
-- 最初は `NAVI_AUTH_MODE=open`（名前だけ入力。管理機能は `NAVI_ADMIN_PASSCODE`）。`User::isAdmin()` で判定
+- ログインは `NAVI_AUTH_MODE=google`（会社の Google Workspace アカウントだけ。管理者は `NAVI_ADMIN_EMAILS`）。`open`（名前だけ・管理者パスコード）も残してある。`User::isAdmin()` で判定
+- Google の戻り先URLは相対（`/auth/google/callback`）で、開いたURL（localhost / ngrok の公開URL）に合わせる。プロキシ越しは TrustProxies で https になる
 
 ## 注意
 - 旧スプレッドシート由来の値は必ず `App\Support\LegacyValue` で正規化する（日付・全角数字の自動変換問題）
