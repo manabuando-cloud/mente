@@ -9,6 +9,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: .ps1 は BOM 付き UTF-8（Windows PowerShell 5.1 で文字化けしないため）
+        run: |
+          for f in $(git ls-files '*.ps1'); do
+            head -c3 "$f" | od -An -tx1 | grep -q 'ef bb bf' || { echo "BOM がありません: $f"; exit 1; }
+          done
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'

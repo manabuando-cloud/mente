@@ -1,4 +1,4 @@
-# 設備トラブルナビを Windows の起動時に自動で動かす設定（管理者として PowerShell で1回だけ実行）
+﻿# 設備トラブルナビを Windows の起動時に自動で動かす設定（管理者として PowerShell で1回だけ実行）
 #   PowerShell を「管理者として実行」→ このファイルのあるフォルダで:
 #     Set-ExecutionPolicy -Scope Process Bypass; .\install-autostart.ps1
 param(
@@ -34,4 +34,4 @@ Write-Host "== LAN から http://<このPC>:8080 で開けるようにファイ�
 New-NetFirewallRule -DisplayName "SetsubiNavi 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -ErrorAction SilentlyContinue | Out-Null
 
 Write-Host ""
-Write-Host "完了しました。PC を再起動して、ログインせずに数分待ってから別のPCで http://$env:COMPUTERNAME:8080 を開いて確認してください。"
+Write-Host "完了しました。PC を再起動して、ログインせずに数分待ってから別のPCで http://$($env:COMPUTERNAME):8080 を開いて確認してください。"
