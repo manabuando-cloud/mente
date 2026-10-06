@@ -39,6 +39,16 @@ setup() {
     exit 0
   fi
 
+  if ! docker info >/dev/null 2>&1; then
+    if ! id -nG | grep -qw docker; then
+      echo "※ docker グループの設定がまだ反映されていません。"
+      echo "   Windows の PowerShell で「wsl --shutdown」を実行し、もう一度 Ubuntu を開いてからこのコマンドを再実行してください"
+    else
+      echo "※ Docker が起動していません。「sudo systemctl start docker」を実行してから再実行してください"
+    fi
+    exit 1
+  fi
+
   if [ ! -f .env ]; then
     echo "== 設定ファイル deploy/windows/.env を作ります"
     cp env.example .env
