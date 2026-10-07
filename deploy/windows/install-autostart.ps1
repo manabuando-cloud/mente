@@ -25,13 +25,19 @@ networkingMode=mirrored
 Write-Host "== 起動時に WSL（とその中の Docker）を立ち上げるタスクを登録します"
 $cred = Get-Credential -UserName "$env:USERDOMAIN\$env:USERNAME" -Message "このPCにログインするときのパスワードを入力してください（ログインしていなくても起動させるため）"
 $action = New-ScheduledTaskAction -Execute "wsl.exe" -Argument "-d $Distro --exec sleep infinity"
+# 起動直後はネットワークやドメインへのログオンが整っておらず失敗することがあるので2分待つ。
+# さらに5分ごとに起動を試みる（動いている間は IgnoreNew で何もしない）ので、WSL が止まっても戻る
 $trigger = New-ScheduledTaskTrigger -AtStartup
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+$trigger.Delay = "PT2M"
+$trigger.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)).Repetition
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName "SetsubiNavi-WSL" -Action $action -Trigger $trigger -Settings $settings `
     -User $cred.UserName -Password $cred.GetNetworkCredential().Password -RunLevel Highest -Force | Out-Null
 
 Write-Host "== LAN から http://<このPC>:8080 で開けるようにファイアウォールを許可します"
-New-NetFirewallRule -DisplayName "SetsubiNavi 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -ErrorAction SilentlyContinue | Out-Null
+if (-not (Get-NetFirewallRule -DisplayName "SetsubiNavi 8080" -ErrorAction SilentlyContinue)) {
+    New-NetFirewallRule -DisplayName "SetsubiNavi 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow | Out-Null
+}
 
 Write-Host ""
 Write-Host "完了しました。PC を再起動して、ログインせずに数分待ってから別のPCで http://$($env:COMPUTERNAME):8080 を開いて確認してください。"
