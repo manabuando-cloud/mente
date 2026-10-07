@@ -110,7 +110,7 @@ common_env() {
   printf '%s' "SESSION_DRIVER=database,SESSION_COOKIE=navi_session,SESSION_SECURE_COOKIE=true,CACHE_STORE=database,CACHE_PREFIX=navi-cache-,"
   printf '%s' "QUEUE_CONNECTION=sync,TRUSTED_PROXIES=*,NAVI_AUTH_MODE=${AUTH_MODE},NAVI_DRIVE_USE_ADC=true,NAVI_PHOTOS_DISK=public,"
   printf '%s' "NAVI_ALLOWED_DOMAIN=${ALLOWED_DOMAIN:-g.kurashiki-laser.co.jp},NAVI_ADMIN_EMAILS=${ADMIN_EMAILS:-},NAVI_INGEST_BATCH_LIMIT=${INGEST_BATCH_LIMIT:-15},"
-  printf '%s' "GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}"
+  printf '%s' "GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}"
   [ -n "${GOOGLE_CLIENT_ID:-}" ] && printf '%s' ",GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID},GOOGLE_REDIRECT_URI=${url}/auth/google/callback"
   return 0
 }

@@ -63,7 +63,7 @@ return [
 
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),
-        'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+        'model' => env('GEMINI_MODEL', 'gemini-flash-latest'),
         'endpoint' => env('GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta'),
         'timeout' => (int) env('GEMINI_TIMEOUT', 120),
         // 無料枠は1分あたりの回数制限が厳しいので、連続で呼ぶときの最低間隔（ミリ秒）。無料枠なら 7000 程度
