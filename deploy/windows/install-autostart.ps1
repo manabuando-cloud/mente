@@ -9,17 +9,21 @@ Write-Host "== スリープしないようにします（電源に接続時）"
 powercfg /change standby-timeout-ac 0
 powercfg /change hibernate-timeout-ac 0
 
-Write-Host "== WSL の設定（アイドル時に止めない・LANから直接アクセスできるようにする）"
+Write-Host "== WSL の設定（アイドル時に止めない）"
+# networkingMode=mirrored は社内の DNS で名前解決できなくなることがあるので使わない（社員は公開URLで開く）
 $wslconfig = Join-Path $env:USERPROFILE ".wslconfig"
 if (-not (Test-Path $wslconfig)) {
     @"
 [wsl2]
 vmIdleTimeout=-1
-networkingMode=mirrored
 "@ | Set-Content -Encoding UTF8 $wslconfig
     Write-Host "   $wslconfig を作成しました"
 } else {
-    Write-Host "   $wslconfig は既にあります。[wsl2] に vmIdleTimeout=-1 と networkingMode=mirrored を追記してください"
+    $lines = Get-Content $wslconfig | Where-Object { $_ -notmatch '^\s*networkingMode\s*=\s*mirrored' }
+    $lines | Set-Content -Encoding UTF8 $wslconfig
+    if (-not ($lines -match '^\s*vmIdleTimeout')) {
+        Write-Host "   $wslconfig の [wsl2] に vmIdleTimeout=-1 を追記してください"
+    }
 }
 
 Write-Host "== 起動時に WSL（とその中の Docker）を立ち上げるタスクを登録します"
@@ -34,10 +38,5 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 Register-ScheduledTask -TaskName "SetsubiNavi-WSL" -Action $action -Trigger $trigger -Settings $settings `
     -User $cred.UserName -Password $cred.GetNetworkCredential().Password -RunLevel Highest -Force | Out-Null
 
-Write-Host "== LAN から http://<このPC>:8080 で開けるようにファイアウォールを許可します"
-if (-not (Get-NetFirewallRule -DisplayName "SetsubiNavi 8080" -ErrorAction SilentlyContinue)) {
-    New-NetFirewallRule -DisplayName "SetsubiNavi 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow | Out-Null
-}
-
 Write-Host ""
-Write-Host "完了しました。PC を再起動して、ログインせずに数分待ってから別のPCで http://$($env:COMPUTERNAME):8080 を開いて確認してください。"
+Write-Host "完了しました。PC を再起動して、ログインせずに5分ほど待ってから、スマホなどで公開URL（.env の APP_URL）を開いて確認してください。"

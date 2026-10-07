@@ -158,9 +158,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 行うこと:
 - 電源接続時にスリープしない設定
-- WSL がアイドルで止まらない設定、社内LANから直接開けるネットワーク設定（`.wslconfig`）
-- Windows 起動時に WSL（と Docker）を立ち上げるタスク（ログインしなくても動く。Windows のパスワードを聞かれます）
-- ファイアウォールで 8080 番を許可
+- WSL がアイドルで止まらない設定（`.wslconfig`）
+- Windows 起動の2分後に WSL（と Docker）を立ち上げ、その後も5分ごとに止まっていないか確かめるタスク（ログインしなくても動く。Windows のパスワードを聞かれます）
 
 終わったら **再起動** し、ログインせずに数分待ってから、別のPCで公開URL（`https://kurashiki-navi.ngrok-free.app`）が開けることを確認します。
 
