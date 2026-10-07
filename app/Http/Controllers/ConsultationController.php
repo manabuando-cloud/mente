@@ -39,6 +39,8 @@ class ConsultationController extends Controller
         try {
             $consultation = $service->consult($data['symptom'], $data['machine_id'] ?? null, $request->user());
         } catch (GeminiException $e) {
+            report($e);
+
             return back()->withInput()->with('error', 'AI相談に失敗しました: '.$e->getMessage());
         }
 

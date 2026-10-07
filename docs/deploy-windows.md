@@ -108,6 +108,7 @@ Google Cloud の **プロジェクトと OAuth クライアントの作成は無
 cd ~/setsubi-navi && ./deploy/windows/navi.sh update
 ./deploy/windows/navi.sh status                    # ngrok も Up になっているか
 ./deploy/windows/navi.sh artisan navi:test-slack   # Slack に届くか
+./deploy/windows/navi.sh artisan navi:test-gemini  # Gemini のキーとモデルが使えるか（エラーなら内容を表示）
 ```
 
 別のPC（またはスマホ）で `https://kurashiki-navi.ngrok-free.app` を開き、「Googleアカウントでログイン」で入れれば成功です。会社以外のアカウントでは入れないことも確認してください。
