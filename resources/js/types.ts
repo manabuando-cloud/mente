@@ -6,8 +6,12 @@ export type Machine = {
     site: string | null;
     category: string | null;
     manuals: { title: string; url: string }[];
+    equipment_no?: string | null;
     name: string;
 };
+
+/** 交換部品: n=部品名, id=品番, q=数量 */
+export type Part = { n: string; id?: string; q?: number };
 
 export type Case = {
     id: string;
@@ -21,9 +25,8 @@ export type Case = {
     cause: string | null;
     action: string | null;
     codes: string[];
-    parts: string[];
+    parts: Part[];
     codes_raw: string | null;
-    parts_raw: string | null;
     cost: number | null;
     status: string | null;
     note: string | null;

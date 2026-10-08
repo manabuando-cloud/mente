@@ -14,7 +14,7 @@ class IngestReports extends Command
     public function handle(ReportIngestor $ingestor): int
     {
         $r = $ingestor->ingest($this->option('limit') ? (int) $this->option('limit') : null, (bool) $this->option('retry-errors'));
-        $this->info("確認待ちに追加: {$r['created']}件 / エラー: {$r['errors']}件");
+        $this->info("確認待ちに追加: {$r['created']}件 / 既存の履歴にリンク: {$r['linked_existing']}件 / 既存の履歴があり対象外: {$r['skipped']}件 / エラー: {$r['errors']}件");
         foreach ($r['messages'] as $m) {
             $this->line('  - '.$m);
         }

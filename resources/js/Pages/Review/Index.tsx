@@ -55,7 +55,7 @@ function ReviewItem({ c }: { c: Case }) {
                 <Item label="原因" value={c.cause} />
                 <Item label="対処" value={c.action} />
                 <Item label="エラーコード" value={c.codes_raw} />
-                <Item label="交換部品" value={c.parts_raw} />
+                <Item label="交換部品" value={c.parts.map((p) => `${p.n}${p.id ? `（${p.id}）` : ''}${p.q != null ? ` ×${p.q}` : ''}`).join('\n') || null} />
                 <Item label="担当者" value={c.engineer} />
                 <Item label="報告書番号" value={c.report_no} />
             </dl>

@@ -1,0 +1,57 @@
+name: Windows 配布物
+
+# Windows に直接インストールする版（deploy/windows-native）の配布物 setsubi-navi-windows.zip を作る。
+# PHP の依存（vendor）と画面（public/build）を組み立て済みで入れるので、PC 側に Composer や Node.js は不要。
+#   - PR: 組み立てられることを確認（成果物として 7 日保存）
+#   - main へのマージ: リリース「windows-latest」に公開（kltech04 ではここからダウンロードする）
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_sqlite
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: composer install --no-dev --no-scripts --prefer-dist --no-interaction --no-progress --optimize-autoloader --classmap-authoritative
+      - run: npm ci && npm run build
+      - name: 配布物を作る
+        run: |
+          set -e
+          rm -rf node_modules tests .github .git bootstrap/cache/*.php public/hot
+          find storage -type f ! -name .gitignore -delete
+          zip -qr setsubi-navi-windows.zip . -x 'setsubi-navi-windows.zip'
+          ls -lh setsubi-navi-windows.zip
+          # 必要なものが入っているか
+          unzip -l setsubi-navi-windows.zip | grep -q ' artisan$'
+          unzip -l setsubi-navi-windows.zip | grep -q 'vendor/autoload.php'
+          unzip -l setsubi-navi-windows.zip | grep -q 'public/build/manifest.json'
+          unzip -l setsubi-navi-windows.zip | grep -q 'deploy/windows-native/install.ps1'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: setsubi-navi-windows
+          path: setsubi-navi-windows.zip
+          retention-days: 7
+      - name: リリース「windows-latest」に公開
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete windows-latest --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create windows-latest setsubi-navi-windows.zip --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "Windows 版（最新）" \
+            --notes "kltech04 用の配布物。ダウンロードして「すべて展開」し、deploy\\windows-native\\install.ps1（初回）または update.ps1（更新）を管理者の PowerShell で実行する。 コミット: $GITHUB_SHA"

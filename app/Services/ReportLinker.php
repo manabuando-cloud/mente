@@ -106,23 +106,6 @@ class ReportLinker
         return $result;
     }
 
-    /**
-     * 見積サブフォルダのファイル名から見積書番号を採取する（quote_no 逆入力機能の下準備）。
-     *
-     * @return list<array{quote_no: string, name: string, url: string, modified: ?string}>
-     */
-    public function quoteFilesFor(Machine $machine): array
-    {
-        $folderId = $this->locator->folderFor($machine);
-
-        return $folderId ? array_map(fn ($f) => [
-            'quote_no' => DriveLocator::normQuoteNo($f['name']),
-            'name' => $f['name'],
-            'url' => DriveLocator::webLink($f),
-            'modified' => $f['modifiedTime'] ?? null,
-        ], $this->locator->quotes($folderId)) : [];
-    }
-
     private function matchQuotes(array $files, string $key): array
     {
         return array_values(array_filter($files, fn ($f) => DriveLocator::normQuoteNo($f['name']) === $key));

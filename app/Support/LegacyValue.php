@@ -19,7 +19,62 @@ class LegacyValue
         }
         $s = trim((string) ($v ?? ''));
 
-        return $s === '' ? null : $s;
+        // 旧データは空欄の代わりに「—」「―」「-」を入れている
+        return $s === '' || preg_match('/^[—―\-－ー‐]+$/u', $s) ? null : $s;
+    }
+
+    /** JSON配列の文字列（'["E1","E2"]'）または区切り文字列を "E1, E2" に */
+    public static function list(mixed $v): ?string
+    {
+        if (is_string($v) && str_starts_with(trim($v), '[')) {
+            $decoded = json_decode($v, true);
+            if (is_array($decoded)) {
+                $v = array_map(fn ($x) => is_array($x) ? ($x['n'] ?? $x['code'] ?? '') : $x, $decoded);
+            }
+        }
+
+        return self::str($v);
+    }
+
+    /**
+     * ID類（機械番号など）。Sheets が数字だけのIDを数値化するため "650200.0" "6.502E+5" を元に戻す。
+     */
+    public static function id(mixed $v): ?string
+    {
+        if (is_float($v) || is_int($v)) {
+            $v = number_format((float) $v, 0, '.', '');
+        }
+        $s = self::str($v);
+        if ($s !== null && preg_match('/^\d+\.0+$/', $s)) {
+            $s = strstr($s, '.', true);
+        }
+
+        return $s;
+    }
+
+    /** 拠点名の揺れ（"1_本社" "九州" など）を正式名に */
+    public static function site(mixed $v): ?string
+    {
+        $s = self::str($v);
+        if ($s === null) {
+            return null;
+        }
+        $s = (string) preg_replace('/^\d+_/', '', $s);
+        foreach (config('navi.site_aliases', []) as $site => $aliases) {
+            if ($s === $site || in_array($s, $aliases, true)) {
+                return $site;
+            }
+        }
+
+        return $s;
+    }
+
+    /** "4501_TRUMPF" "B2_板金" "工場1_製造1課" のようなコード付きの値からコードを外す */
+    public static function stripCode(mixed $v): ?string
+    {
+        $s = self::str($v);
+
+        return $s === null ? null : self::str(preg_replace('/^[^_\s]{1,6}_/u', '', $s));
     }
 
     public static function date(mixed $v): ?string

@@ -48,4 +48,18 @@ class ConsultationTest extends TestCase
             ->assertRedirect('/consult')->assertSessionHas('error');
         $this->assertSame(0, Consultation::count());
     }
+
+    public function test_test_gemini_command_reports_api_error(): void
+    {
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response(['error' => ['message' => 'API key not valid']], 400)]);
+
+        $this->artisan('navi:test-gemini')->expectsOutputToContain('API key not valid')->assertFailed();
+    }
+
+    public function test_test_gemini_command_shows_answer(): void
+    {
+        Http::fake(['generativelanguage.googleapis.com/*' => self::geminiResponse('OK')]);
+
+        $this->artisan('navi:test-gemini')->expectsOutputToContain('応答: OK')->assertSuccessful();
+    }
 }

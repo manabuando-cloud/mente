@@ -8,11 +8,15 @@ use Illuminate\Support\Facades\Http;
 
 class GeminiClient
 {
+    /** 直近に API を呼んだ時刻（マイクロ秒）。無料枠の回数制限に当たらないよう間隔を空けるのに使う */
+    private static ?float $lastCallAt = null;
+
     public function __construct(
         private ?string $apiKey,
         private string $model,
         private string $endpoint,
         private int $timeout = 120,
+        private int $minIntervalMs = 0,
     ) {}
 
     public static function fromConfig(): self
@@ -22,6 +26,7 @@ class GeminiClient
             config('navi.gemini.model'),
             rtrim(config('navi.gemini.endpoint'), '/'),
             config('navi.gemini.timeout'),
+            config('navi.gemini.min_interval_ms'),
         );
     }
 
@@ -102,8 +107,20 @@ class GeminiClient
         return $text;
     }
 
+    private function waitForInterval(): void
+    {
+        if ($this->minIntervalMs > 0 && self::$lastCallAt !== null) {
+            $waitUs = (int) (self::$lastCallAt + $this->minIntervalMs * 1000 - microtime(true) * 1_000_000);
+            if ($waitUs > 0) {
+                usleep($waitUs);
+            }
+        }
+        self::$lastCallAt = microtime(true) * 1_000_000;
+    }
+
     private function post(string $url, array $payload): Response
     {
+        $this->waitForInterval();
         try {
             return Http::timeout($this->timeout)
                 ->withHeaders(['x-goog-api-key' => $this->apiKey])

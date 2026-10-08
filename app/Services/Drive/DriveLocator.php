@@ -12,6 +12,9 @@ class DriveLocator
     /** @var array<string, list<array>> */
     private array $memo = [];
 
+    /** @var list<string>|null "_" を含む登録済み機械番号 */
+    private ?array $knownIds = null;
+
     public function __construct(private DriveClient $drive) {}
 
     public function children(string $folderId): array
@@ -35,7 +38,7 @@ class DriveLocator
                 if ($f['mimeType'] !== DriveClient::FOLDER_MIME) {
                     continue;
                 }
-                [$machineId, $model] = array_pad(explode('_', $f['name'], 2), 2, '');
+                [$machineId, $model] = $this->parseFolderName($f['name']);
                 if ($machineId === '') {
                     continue;
                 }
@@ -44,6 +47,25 @@ class DriveLocator
         }
 
         return $result;
+    }
+
+    /**
+     * "<機械番号>_<型式>" を分解する。機械番号自体に "_" を含むもの（例: L_0987）があるので、
+     * 登録済みの機械番号に前方一致するものを優先し、無ければ最初の "_" で分ける。
+     *
+     * @return array{0: string, 1: string}
+     */
+    public function parseFolderName(string $name): array
+    {
+        $this->knownIds ??= Machine::query()->pluck('id')->filter(fn ($id) => str_contains($id, '_'))
+            ->sortByDesc(fn ($id) => strlen($id))->values()->all();
+        foreach ($this->knownIds as $id) {
+            if ($name === $id || str_starts_with($name, $id.'_')) {
+                return [$id, (string) substr($name, strlen($id) + 1)];
+            }
+        }
+
+        return array_pad(explode('_', $name, 2), 2, '');
     }
 
     /** 機械フォルダ直下の作業報告書PDF */
@@ -99,14 +121,23 @@ class DriveLocator
         return null;
     }
 
-    /** "20240315_1030_ActivityReport.pdf" → "2024-03-15" */
+    /**
+     * "20240315_1030_ActivityReport.pdf" / "20260824-#B0702A0033_..." → "2024-03-15"。
+     * 未来の日付（"20270726" のような打ち間違い）は信用しない。
+     */
     public static function reportDate(string $fileName): ?string
     {
-        if (! preg_match('/^(\d{4})(\d{2})(\d{2})/', $fileName, $m) || ! checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+        // 先頭の "20240315" / "2023-06-14" / "2026.2.13"（実際のファイル名にある形）
+        if (! preg_match('/^(\d{4})(?:(\d{2})(\d{2})(?!\d)|[\-.](\d{1,2})[\-.](\d{1,2})(?!\d))/', $fileName, $m)) {
             return null;
         }
+        [$y, $mo, $d] = [(int) $m[1], (int) (($m[2] ?? '') !== '' ? $m[2] : $m[4]), (int) (($m[3] ?? '') !== '' ? $m[3] : $m[5])];
+        if (! checkdate($mo, $d, $y)) {
+            return null;
+        }
+        $date = sprintf('%04d-%02d-%02d', $y, $mo, $d);
 
-        return "{$m[1]}-{$m[2]}-{$m[3]}";
+        return $date <= now()->addDay()->format('Y-m-d') ? $date : null;
     }
 
     /**

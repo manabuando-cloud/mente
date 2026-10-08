@@ -70,7 +70,14 @@ export default function CasesIndex({
                 </div>
             </form>
 
-            <p className="mb-3 text-sm text-muted">{cases.total.toLocaleString()}件</p>
+            <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm text-muted">{cases.total.toLocaleString()}件</p>
+                {cases.total > 0 && (
+                    <a href={`/cases/export?${new URLSearchParams(compact(filters) as Record<string, string>)}`} className="text-sm text-accent-ink hover:underline">
+                        ⬇ CSVでダウンロード
+                    </a>
+                )}
+            </div>
 
             <div className="space-y-3">
                 {cases.data.length === 0 && (

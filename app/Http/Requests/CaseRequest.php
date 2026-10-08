@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\TroubleCase;
 use Illuminate\Foundation\Http\FormRequest;
 
 class CaseRequest extends FormRequest
@@ -34,7 +35,10 @@ class CaseRequest extends FormRequest
             'cause' => ['nullable', 'string', 'max:5000'],
             'action' => ['nullable', 'string', 'max:5000'],
             'codes' => ['nullable', 'string', 'max:1000'],
-            'parts' => ['nullable', 'string', 'max:2000'],
+            'parts' => ['nullable', 'array', 'max:50'],
+            'parts.*.n' => ['required', 'string', 'max:300'],
+            'parts.*.id' => ['nullable', 'string', 'max:100'],
+            'parts.*.q' => ['nullable', 'numeric', 'min:0'],
             'cost' => ['nullable', 'integer', 'min:0'],
             'status' => ['nullable', 'string', 'max:50'],
             'note' => ['nullable', 'string', 'max:5000'],
@@ -52,12 +56,16 @@ class CaseRequest extends FormRequest
     {
         return [
             'machine_id' => '機種', 'date' => '対応日', 'symptom' => '症状', 'cost' => '費用',
-            'days' => '停止日数', 'report_url' => '報告書PDFのURL', 'quote_url' => '見積書PDFのURL', 'photos.*' => '写真',
+            'days' => '停止日数', 'parts.*.n' => '部品名', 'parts.*.q' => '数量', 'report_url' => '報告書PDFのURL', 'quote_url' => '見積書PDFのURL', 'photos.*' => '写真',
         ];
     }
 
     public function caseAttributes(): array
     {
-        return collect($this->validated())->except(['photos', 'remove_photo_ids'])->all();
+        $data = collect($this->validated())->except(['photos', 'remove_photo_ids'])->all();
+        // 部品を全部消すと multipart では parts キー自体が送られないので、無ければ空として扱う
+        $data['parts'] = TroubleCase::normalizeParts($data['parts'] ?? []);
+
+        return $data;
     }
 }

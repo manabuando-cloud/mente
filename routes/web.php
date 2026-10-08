@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\GoogleLoginController;
+use App\Http\Controllers\Auth\OpenLoginController;
 use App\Http\Controllers\CaseController;
 use App\Http\Controllers\CaseRatingController;
 use App\Http\Controllers\ConsultationController;
@@ -15,6 +16,7 @@ Route::middleware('guest')->group(function () {
     Route::get('/auth/google', [GoogleLoginController::class, 'redirect'])->name('auth.google');
     Route::get('/auth/google/callback', [GoogleLoginController::class, 'callback']);
     Route::post('/auth/dev', [GoogleLoginController::class, 'devLogin'])->name('auth.dev');
+    Route::post('/auth/open', [OpenLoginController::class, 'store'])->middleware('throttle:10,1')->name('auth.open');
 });
 
 Route::middleware('auth')->group(function () {
@@ -22,6 +24,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/', DashboardController::class)->name('dashboard');
 
+    Route::get('/cases/export', [CaseController::class, 'export'])->name('cases.export');
     Route::resource('cases', CaseController::class)->except('destroy');
     Route::post('/cases/{case}/rating', CaseRatingController::class)->name('cases.rate');
 
@@ -41,5 +44,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/drive', [DriveSyncController::class, 'index'])->name('drive.index');
         Route::post('/drive/run', [DriveSyncController::class, 'run'])->name('drive.run');
         Route::post('/drive/resolve', [DriveSyncController::class, 'resolve'])->name('drive.resolve');
+        Route::post('/drive/quote-assign', [DriveSyncController::class, 'assignQuote'])->name('drive.quote-assign');
+        Route::post('/drive/vendor-folders/sync', [DriveSyncController::class, 'syncVendorFolders'])->name('drive.vendor-sync');
+        Route::put('/drive/vendor-folders/{folder}', [DriveSyncController::class, 'updateVendorFolder'])->name('drive.vendor-update');
     });
 });

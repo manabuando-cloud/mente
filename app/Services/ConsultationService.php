@@ -74,7 +74,7 @@ class ConsultationService
                 $c->cause ?: '-',
                 $c->action ?: '-',
                 $c->codes ?: '-',
-                $c->parts ?: '-',
+                implode('、', $c->partNames()) ?: '-',
             );
         }
 

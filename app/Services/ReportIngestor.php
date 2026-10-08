@@ -7,6 +7,7 @@ use App\Models\ProcessedReportFile;
 use App\Models\TroubleCase;
 use App\Services\Drive\DriveClient;
 use App\Services\Drive\DriveLocator;
+use App\Services\Drive\KnownDriveFiles;
 use App\Services\Gemini\GeminiClient;
 use App\Services\Gemini\GeminiQuotaExceededException;
 use Illuminate\Support\Facades\Log;
@@ -24,15 +25,27 @@ class ReportIngestor
     private const SCHEMA = [
         'type' => 'OBJECT',
         'properties' => [
-            'date' => ['type' => 'STRING', 'description' => '対応日 YYYY-MM-DD'],
+            'date' => ['type' => 'STRING', 'description' => '対応日（作業日） YYYY-MM-DD'],
             'engineer' => ['type' => 'STRING', 'description' => '作業者・サービスエンジニア名'],
             'report_no' => ['type' => 'STRING'],
-            'symptom' => ['type' => 'STRING', 'description' => '発生していた症状・不具合内容'],
+            'symptom' => ['type' => 'STRING', 'description' => '発生していた症状・不具合内容・作業の目的'],
             'cause' => ['type' => 'STRING'],
             'action' => ['type' => 'STRING', 'description' => '実施した処置・対応内容'],
             'codes' => ['type' => 'ARRAY', 'items' => ['type' => 'STRING'], 'description' => 'アラーム・エラーコード'],
-            'parts' => ['type' => 'ARRAY', 'items' => ['type' => 'STRING'], 'description' => '交換・使用した部品'],
-            'status' => ['type' => 'STRING', 'description' => '完了 / 継続対応 など'],
+            'parts' => [
+                'type' => 'ARRAY',
+                'description' => '交換・使用した部品',
+                'items' => [
+                    'type' => 'OBJECT',
+                    'properties' => [
+                        'n' => ['type' => 'STRING', 'description' => '部品名'],
+                        'id' => ['type' => 'STRING', 'description' => '品番・部品番号'],
+                        'q' => ['type' => 'NUMBER', 'description' => '数量'],
+                    ],
+                    'required' => ['n'],
+                ],
+            ],
+            'status' => ['type' => 'STRING', 'description' => 'repaired（修理完了）/ pending（継続対応）/ free（無償対応） のいずれか'],
             'note' => ['type' => 'STRING'],
         ],
         'required' => ['symptom'],
@@ -50,15 +63,12 @@ class ReportIngestor
     public function ingest(?int $limit = null, bool $retryErrors = false): array
     {
         $limit ??= config('navi.ingest_batch_limit');
-        $result = ['created' => 0, 'skipped' => 0, 'errors' => 0, 'quota_exhausted' => false, 'messages' => []];
-
-        $processed = ProcessedReportFile::query()
-            ->when($retryErrors, fn ($q) => $q->where('result', 'not like', 'error%'))
-            ->pluck('file_id')->flip();
+        $result = ['created' => 0, 'linked_existing' => 0, 'skipped' => 0, 'errors' => 0, 'quota_exhausted' => false, 'messages' => []];
+        $known = KnownDriveFiles::ids($retryErrors);
 
         foreach ($this->locator->machineFolders() as $mf) {
             foreach ($this->locator->activityReports($mf['folder']['id']) as $file) {
-                if (isset($processed[$file['id']])) {
+                if (isset($known[$file['id']])) {
                     continue;
                 }
                 if ($limit <= $result['created'] + $result['errors']) {
@@ -67,20 +77,12 @@ class ReportIngestor
                     return $result;
                 }
 
-                try {
-                    $this->ingestFile($mf, $file);
-                    $result['created']++;
-                } catch (GeminiQuotaExceededException $e) {
-                    // 処理済みにはしない（次回リトライ）。無駄な失敗の連続を避けて即中断。
-                    $result['quota_exhausted'] = true;
-                    $result['messages'][] = $e->getMessage();
-
+                $machine = Machine::firstOrCreate(
+                    ['id' => $mf['machine_id']],
+                    ['model' => $mf['model'] ?: $mf['machine_id'], 'site' => $mf['site'], 'source' => 'drive', 'drive_folder_id' => $mf['folder']['id']],
+                );
+                if (! $this->ingestOne($machine, $file, $result)) {
                     return $result;
-                } catch (Throwable $e) {
-                    Log::warning("報告書取込みに失敗: {$file['name']}", ['error' => $e->getMessage()]);
-                    $this->markProcessed($file, $mf['machine_id'], 'error: '.mb_substr($e->getMessage(), 0, 200));
-                    $result['errors']++;
-                    $result['messages'][] = "{$file['name']}: {$e->getMessage()}";
                 }
             }
         }
@@ -88,39 +90,102 @@ class ReportIngestor
         return $result;
     }
 
-    private function ingestFile(array $mf, array $file): TroubleCase
+    /**
+     * 1ファイルを取り込んで $result を更新する。クォータ超過で中断すべきとき false を返す。
+     *
+     * 旧データの履歴の多くは同じ報告書から手で作られているので、AIで読む前に
+     * 同じ機械・同じ日付の履歴を探す:
+     *   - 1件で報告書URLが空 → その履歴にPDFをリンクするだけ（AIは使わない）
+     *   - それ以外で既存がある（URL設定済み・複数） → 重複の可能性が高いので取り込まない
+     *   - 無い → AIで読んで確認待ちにする
+     */
+    public function ingestOne(Machine $machine, array $file, array &$result, ?string $context = null): bool
     {
-        $machine = Machine::firstOrCreate(
-            ['id' => $mf['machine_id']],
-            ['model' => $mf['model'] ?: $mf['machine_id'], 'site' => $mf['site'], 'source' => 'drive', 'drive_folder_id' => $mf['folder']['id']],
-        );
+        [$decision, $target] = $this->existingDecision($machine, $file);
+        if ($decision === 'link') {
+            $target->update(['report_url' => DriveLocator::webLink($file)]);
+            $this->markProcessed($file, $machine->id, 'linked_existing');
+            $result['linked_existing'] = ($result['linked_existing'] ?? 0) + 1;
 
+            return true;
+        }
+        if ($decision === 'skip') {
+            $this->markProcessed($file, $machine->id, 'skipped_existing');
+            $result['skipped'] = ($result['skipped'] ?? 0) + 1;
+
+            return true;
+        }
+
+        try {
+            $this->createPendingCase($machine, $file, $context);
+            $result['created']++;
+
+            return true;
+        } catch (GeminiQuotaExceededException $e) {
+            // 処理済みにはしない（次回リトライ）。無駄な失敗の連続を避けて即中断。
+            $result['quota_exhausted'] = true;
+            $result['messages'][] = $e->getMessage();
+
+            return false;
+        } catch (Throwable $e) {
+            Log::warning("報告書取込みに失敗: {$file['name']}", ['error' => $e->getMessage()]);
+            $this->markProcessed($file, $machine->id, 'error: '.mb_substr($e->getMessage(), 0, 200));
+            $result['errors']++;
+            $result['messages'][] = "{$file['name']}: {$e->getMessage()}";
+
+            return true;
+        }
+    }
+
+    /**
+     * 同じ機械・同じ日付の既存履歴に対してどうするか。
+     *
+     * @return array{0: 'link'|'skip'|null, 1: ?TroubleCase}
+     */
+    public function existingDecision(Machine $machine, array $file): array
+    {
+        $date = DriveLocator::reportDate($file['name']);
+        if (! $date) {
+            return [null, null];
+        }
+        $existing = TroubleCase::where('machine_id', $machine->id)->whereDate('date', $date)
+            ->where('review_status', '!=', TroubleCase::REVIEW_REJECTED)->get();
+
+        return match (true) {
+            $existing->count() === 1 && ! $existing->first()->report_url => ['link', $existing->first()],
+            $existing->isNotEmpty() => ['skip', null],
+            default => [null, null],
+        };
+    }
+
+    private function createPendingCase(Machine $machine, array $file, ?string $context): TroubleCase
+    {
         $pdf = $this->drive->download($file['id']);
         $data = $this->gemini->generateJson(
-            "添付は設備保守の作業報告書（ActivityReport）です。機種: {$machine->displayName()}。\n".
-            '記載内容から対応履歴の項目を抽出してJSONで返してください。記載が無い項目は空文字にしてください。'.
-            '推測で埋めないこと。',
+            "添付は設備保守の作業報告書です。機種: {$machine->displayName()}（{$machine->maker}）。ファイル名: {$file['name']}\n".
+            ($context ? "{$context}\n" : '').
+            '記載内容から対応履歴の項目を抽出してJSONで返してください。記載が無い項目は空文字にしてください。推測で埋めないこと。',
             [['mime' => 'application/pdf', 'data' => $pdf]],
             self::SCHEMA,
         );
 
         $str = fn (string $k) => trim((string) ($data[$k] ?? '')) ?: null;
-        $list = fn (string $k) => (is_array($data[$k] ?? null)
-            ? implode(', ', array_filter(array_map('trim', $data[$k])))
-            : trim((string) ($data[$k] ?? ''))) ?: null;
-        $date = DriveLocator::reportDate($file['name']) ?? $this->validDate($data['date'] ?? null);
+        $codes = is_array($data['codes'] ?? null)
+            ? implode(', ', array_filter(array_map(fn ($v) => trim((string) $v), $data['codes'])))
+            : $str('codes');
+        $status = in_array($data['status'] ?? null, ['repaired', 'pending', 'free', 'quote_only'], true) ? $data['status'] : null;
 
         $case = TroubleCase::create([
             'machine_id' => $machine->id,
-            'date' => $date,
+            'date' => DriveLocator::reportDate($file['name']) ?? $this->validDate($data['date'] ?? null),
             'engineer' => $str('engineer'),
             'report_no' => $str('report_no'),
             'symptom' => $str('symptom') ?? '（報告書から症状を抽出できませんでした）',
             'cause' => $str('cause'),
             'action' => $str('action'),
-            'codes' => $list('codes'),
-            'parts' => $list('parts'),
-            'status' => $str('status'),
+            'codes' => $codes ?: null,
+            'parts' => $data['parts'] ?? [],
+            'status' => $status,
             'note' => $str('note'),
             'report_url' => DriveLocator::webLink($file),
             'review_status' => TroubleCase::REVIEW_PENDING,
@@ -135,7 +200,7 @@ class ReportIngestor
         return $case;
     }
 
-    private function markProcessed(array $file, string $machineId, string $result): void
+    public function markProcessed(array $file, ?string $machineId, string $result): void
     {
         ProcessedReportFile::updateOrCreate(
             ['file_id' => $file['id']],
@@ -145,6 +210,6 @@ class ReportIngestor
 
     private function validDate(?string $v): ?string
     {
-        return $v && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) && strtotime($v) ? $v : null;
+        return $v && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) && strtotime($v) && $v <= now()->addDay()->format('Y-m-d') ? $v : null;
     }
 }

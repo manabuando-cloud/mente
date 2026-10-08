@@ -1,6 +1,7 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import type { Case, SharedProps } from '@/types';
 import { yen } from '@/lib/format';
+import { statusLabel } from '@/lib/status';
 
 /** 対応履歴カード（検索結果・ダッシュボード・類似事例で共通） */
 export default function CaseCard({ c, compact = false }: { c: Case; compact?: boolean }) {
@@ -17,7 +18,7 @@ export default function CaseCard({ c, compact = false }: { c: Case; compact?: bo
                     <span className="font-semibold text-ink">{c.machine?.model ?? c.machine_id}</span> {c.machine_id}
                 </span>
                 {c.machine?.site && <span className="chip">{c.machine.site}</span>}
-                {c.status && <span className="chip">{c.status}</span>}
+                {c.status && <span className="chip">{statusLabel(c.status)}</span>}
                 {c.review_status !== 'published' && <span className="chip bg-warn-soft text-warn">確認待ち</span>}
                 {c.similarity != null && <span className="ml-auto">類似度 {Math.round(Math.min(c.similarity, 1) * 100)}%</span>}
             </header>
@@ -40,9 +41,10 @@ export default function CaseCard({ c, compact = false }: { c: Case; compact?: bo
                             ⚠ {x}
                         </span>
                     ))}
-                    {c.parts.map((x) => (
-                        <span key={`p-${x}`} className="chip">
-                            🔩 {x}
+                    {c.parts.map((p, i) => (
+                        <span key={`p-${i}`} className="chip" title={p.id ? `品番 ${p.id}` : undefined}>
+                            🔩 {p.n}
+                            {p.q != null && p.q !== 1 && <span className="ml-1 text-muted">×{p.q}</span>}
                         </span>
                     ))}
                 </div>
