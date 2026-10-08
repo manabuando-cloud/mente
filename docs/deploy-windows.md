@@ -135,6 +135,11 @@ Google Cloud の **プロジェクトとサービスアカウントの作成は�
 
 > 鍵の作成で「組織のポリシーで無効」と出た場合は、Google Workspace の管理者に「`iam.disableServiceAccountKeyCreation` をこのプロジェクトだけ解除」を依頼してください。
 
+> **共有ドライブが「社外と共有できない」設定の場合**（6 の共有で「メンバー以外や 倉敷レーザー株式会社 外とは共有できません」と出る）は、共有の代わりに「ドメイン全体の委任」を使い、サービスアカウントが社内ユーザーとして読みます。
+> 1. 鍵の JSON の `client_id`（数字）を確認する: PowerShell で `(Get-Content C:\setsubi-navi-import\google-drive.json -Raw | ConvertFrom-Json).client_id`
+> 2. 特権管理者が <https://admin.google.com> →「セキュリティ → アクセスとデータ管理 → API の制御 → ドメイン全体の委任を管理」→「新しく追加」で、クライアント ID に 1 の数字、OAuth スコープに `https://www.googleapis.com/auth/drive.readonly` を入れて承認
+> 3. `.env` に `NAVI_DRIVE_IMPERSONATE=<報告書フォルダを見られる社内ユーザーのメールアドレス>` を書いて `update`（読み取り専用。そのユーザーが見られるフォルダだけ読める）
+
 ## 7. 旧GAS版のデータを移す
 
 1. スプレッドシート「設備マスタ一覧（SOFTエクスポート）」を「ファイル → ダウンロード → CSV」で保存し、`設備マスタ一覧.csv` という名前にする

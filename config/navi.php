@@ -51,6 +51,8 @@ return [
         'credentials' => env('GOOGLE_APPLICATION_CREDENTIALS'),
         // Cloud Run などでは鍵ファイルを使わず、実行中のサービスアカウントの認証情報（ADC）を使う
         'use_adc' => (bool) env('NAVI_DRIVE_USE_ADC', false),
+        // ドメイン全体の委任を使う場合、サービスアカウントが代わりに読む社内ユーザーのメールアドレス
+        'impersonate' => env('NAVI_DRIVE_IMPERSONATE'),
     ],
 
     // 拠点名の表記ゆれ（旧データ・設備マスタの「事業所」列）

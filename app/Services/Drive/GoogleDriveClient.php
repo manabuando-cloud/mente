@@ -11,6 +11,8 @@ use RuntimeException;
 /**
  * サービスアカウントで Drive API v3 を叩く実装。
  * 共有ルートフォルダをサービスアカウントのメールアドレスに「閲覧者」で共有しておくこと。
+ * 社外と共有できない共有ドライブの場合は、Workspace の「ドメイン全体の委任」を設定し、
+ * $impersonate に社内ユーザーを指定すると、そのユーザーとして読む（共有は不要）。
  */
 class GoogleDriveClient implements DriveClient
 {
@@ -18,7 +20,7 @@ class GoogleDriveClient implements DriveClient
 
     private const SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
 
-    public function __construct(private ?string $credentialsPath, private bool $useAdc = false) {}
+    public function __construct(private ?string $credentialsPath, private bool $useAdc = false, private ?string $impersonate = null) {}
 
     public function listChildren(string $folderId): array
     {
@@ -52,7 +54,7 @@ class GoogleDriveClient implements DriveClient
     {
         return Cache::remember('navi.drive.token', now()->addMinutes(50), function () {
             if ($this->credentialsPath && is_file($this->credentialsPath)) {
-                $creds = new ServiceAccountCredentials(self::SCOPE, json_decode(file_get_contents($this->credentialsPath), true));
+                $creds = new ServiceAccountCredentials(self::SCOPE, json_decode(file_get_contents($this->credentialsPath), true), $this->impersonate ?: null);
             } elseif ($this->useAdc) {
                 // Cloud Run のメタデータサーバーから、サービスに割り当てたサービスアカウントのトークンを得る
                 $creds = ApplicationDefaultCredentials::getCredentials(self::SCOPE);
